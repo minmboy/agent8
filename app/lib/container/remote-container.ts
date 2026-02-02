@@ -135,7 +135,6 @@ class RemoteContainerConnection {
     to: ConnectionState;
     timestamp: number;
   }> = [];
-  private _stateChangeFrequency = new Map<string, number>();
 
   constructor(
     private _serverUrl: string,
@@ -732,7 +731,6 @@ class RemoteContainerConnection {
 
     // Clean up history
     this._stateChangeHistory = [];
-    this._stateChangeFrequency.clear();
   }
 
   private _setupNetworkStateListener(): void {
@@ -957,7 +955,6 @@ export class RemoteContainer implements Container {
 
   private _connection: RemoteContainerConnection;
   private _connectionStateListeners = new Set<ConnectionStateListener>();
-  private _nonTerminatingProcessRunning = false;
 
   constructor(serverUrl: string, workdir: string, token: string) {
     this._connection = new RemoteContainerConnection(serverUrl, token);
@@ -1262,6 +1259,10 @@ export class RemoteContainer implements Container {
     };
 
     let isWaitingForOscCode = false;
+    let nonTerminatingProcessRunning = false;
+
+    // Session-level timeout ID for non-terminating process read operations
+    let readSetTimeoutId: NodeJS.Timeout | null = null;
 
     const waitTillOscCode = async (waitCode: string, signal?: AbortSignal) => {
       const checkAborted = () => {
@@ -1316,7 +1317,6 @@ export class RemoteContainer implements Container {
       const reader = internalOutput.getReader();
       let localBuffer = _globalOutputBuffer; // Start with existing buffer content
       let streamReadTimeoutId: NodeJS.Timeout | null = null;
-      let readSetTimeoutId: NodeJS.Timeout | null = null;
       let abortHandler: (() => void) | null = null;
 
       try {
@@ -1337,17 +1337,20 @@ export class RemoteContainer implements Container {
 
         while (true) {
           const readPromise = reader.read();
-          const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
-            readSetTimeoutId = setTimeout(() => {
-              if (this._nonTerminatingProcessRunning) {
+          const raceCandidates: Promise<any>[] = [readPromise, abortPromise];
+
+          if (nonTerminatingProcessRunning) {
+            const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
+              readSetTimeoutId = setTimeout(() => {
                 reject(new NoneError('read timeout'));
-              }
-            }, STREAM_READ_IDLE_TIMEOUT_MS);
-          });
+              }, STREAM_READ_IDLE_TIMEOUT_MS);
+            });
+            raceCandidates.push(timeoutPromise);
+          }
 
           checkAborted();
 
-          const { value, done } = await Promise.race([readPromise, timeoutPromise, abortPromise]);
+          const { value, done } = await Promise.race(raceCandidates);
 
           checkAborted();
 
@@ -1444,57 +1447,71 @@ export class RemoteContainer implements Container {
 
       // Command execution implementation
       executeCommand = async (command: string): Promise<ExecutionResult> => {
+        // Command execution ID for logging (not a session ID)
+        const commandExecutionId = v4().slice(0, 8);
+        logger.debug(`[${commandExecutionId}] executeCommand`, command);
+
+        // Set non-terminating process flag for timeout handling
         if (isNonTerminatingCommand(command)) {
-          this._nonTerminatingProcessRunning = true;
+          nonTerminatingProcessRunning = true;
+        } else {
+          // Clear any existing timeout from previous non-terminating command
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
+
+          nonTerminatingProcessRunning = false;
         }
 
-        const sessionId = v4().slice(0, 8);
+        try {
+          // Use currentTerminal instead of original terminal for input
+          if (!currentTerminal) {
+            throw new Error('No terminal attached to session');
+          }
 
-        logger.debug(`[${sessionId}] executeCommand`, command);
+          /*
+           * Clear global output buffer to avoid confusion with previous command outputs
+           * This ensures we only wait for OSC codes from the current command execution
+           */
+          _globalOutputBuffer = '';
 
-        // Use currentTerminal instead of original terminal for input
-        if (!currentTerminal) {
-          throw new Error('No terminal attached to session');
-        }
+          // Interrupt current execution
+          currentTerminal.input('\x03');
 
-        /*
-         * Clear global output buffer to avoid confusion with previous command outputs
-         * This ensures we only wait for OSC codes from the current command execution
-         */
-        _globalOutputBuffer = '';
+          // for dead lock prevention
+          if (isWaitingForOscCode) {
+            currentTerminal.input(':' + '\n');
+          }
 
-        // Interrupt current execution
-        currentTerminal.input('\x03');
+          logger.debug(`[${commandExecutionId}] waiting for prompt`, command);
 
-        // for dead lock prevention
-        if (isWaitingForOscCode) {
+          // Wait for prompt
+          await waitTillOscCode('prompt');
+
+          // Execute new command
           currentTerminal.input(':' + '\n');
+          await waitTillOscCode('exit');
+          logger.debug('terminal is responsive');
+
+          currentTerminal.input(command.trim() + '\n');
+
+          // Wait for execution result
+          const { output, exitCode } = await waitTillOscCode('exit');
+
+          return {
+            output: cleanTerminalOutput(output),
+            exitCode,
+          };
+        } finally {
+          // Always clean up state after command execution (success or failure)
+          nonTerminatingProcessRunning = false;
+
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
         }
-
-        logger.debug(`[${sessionId}] waiting for prompt`, command);
-
-        // Wait for prompt
-        await waitTillOscCode('prompt');
-
-        // Execute new command
-        currentTerminal.input(':' + '\n');
-        await waitTillOscCode('exit');
-        logger.debug('terminal is responsive');
-
-        logger.debug(`[${sessionId}] prompt received`, command);
-
-        currentTerminal.input(command.trim() + '\n');
-        logger.debug(`[${sessionId}] command executed`, command);
-
-        // Wait for execution result
-        const { output, exitCode } = await waitTillOscCode('exit');
-
-        logger.debug(`[${sessionId}] execution ended`, command, exitCode);
-
-        return {
-          output: cleanTerminalOutput(output),
-          exitCode,
-        };
       };
     } else {
       output = process.output;
