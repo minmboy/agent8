@@ -135,7 +135,6 @@ class RemoteContainerConnection {
     to: ConnectionState;
     timestamp: number;
   }> = [];
-  private _stateChangeFrequency = new Map<string, number>();
 
   constructor(
     private _serverUrl: string,
@@ -732,7 +731,6 @@ class RemoteContainerConnection {
 
     // Clean up history
     this._stateChangeHistory = [];
-    this._stateChangeFrequency.clear();
   }
 
   private _setupNetworkStateListener(): void {
@@ -1262,6 +1260,7 @@ export class RemoteContainer implements Container {
     };
 
     let isWaitingForOscCode = false;
+    let readSetTimeoutId: NodeJS.Timeout | null = null;
 
     const waitTillOscCode = async (waitCode: string, signal?: AbortSignal) => {
       const checkAborted = () => {
@@ -1316,7 +1315,6 @@ export class RemoteContainer implements Container {
       const reader = internalOutput.getReader();
       let localBuffer = _globalOutputBuffer; // Start with existing buffer content
       let streamReadTimeoutId: NodeJS.Timeout | null = null;
-      let readSetTimeoutId: NodeJS.Timeout | null = null;
       let abortHandler: (() => void) | null = null;
 
       try {
@@ -1337,17 +1335,20 @@ export class RemoteContainer implements Container {
 
         while (true) {
           const readPromise = reader.read();
-          const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
-            readSetTimeoutId = setTimeout(() => {
-              if (this._nonTerminatingProcessRunning) {
+          const raceCandidates: Promise<any>[] = [readPromise, abortPromise];
+
+          if (this._nonTerminatingProcessRunning) {
+            const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
+              readSetTimeoutId = setTimeout(() => {
                 reject(new NoneError('read timeout'));
-              }
-            }, STREAM_READ_IDLE_TIMEOUT_MS);
-          });
+              }, STREAM_READ_IDLE_TIMEOUT_MS);
+            });
+            raceCandidates.push(timeoutPromise);
+          }
 
           checkAborted();
 
-          const { value, done } = await Promise.race([readPromise, timeoutPromise, abortPromise]);
+          const { value, done } = await Promise.race(raceCandidates);
 
           checkAborted();
 
@@ -1444,13 +1445,19 @@ export class RemoteContainer implements Container {
 
       // Command execution implementation
       executeCommand = async (command: string): Promise<ExecutionResult> => {
+        const sessionId = v4().slice(0, 8);
+        logger.debug(`[${sessionId}] executeCommand`, command);
+
         if (isNonTerminatingCommand(command)) {
           this._nonTerminatingProcessRunning = true;
+        } else {
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
+
+          this._nonTerminatingProcessRunning = false;
         }
-
-        const sessionId = v4().slice(0, 8);
-
-        logger.debug(`[${sessionId}] executeCommand`, command);
 
         // Use currentTerminal instead of original terminal for input
         if (!currentTerminal) {
