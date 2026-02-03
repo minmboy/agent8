@@ -600,6 +600,11 @@ export class WorkbenchStore {
   }
 
   abortAllActions() {
+    // Assign to variables to prevent race conditions
+    const runPreview = this.#runPreviewAbortController;
+    const publish = this.#publishAbortController;
+    const shell = this.#shellAbortController;
+
     // Process and clear all message action queues
     const queueSnapshot = new Map(this.#messageToActionQueue);
     this.#messageToActionQueue.clear();
@@ -642,13 +647,13 @@ export class WorkbenchStore {
       }
     }
 
-    this.#runPreviewAbortController?.abort();
-    this.#publishAbortController?.abort();
-    this.#shellAbortController?.abort();
-
     this.#runPreviewAbortController = null;
     this.#publishAbortController = null;
     this.#shellAbortController = null;
+
+    runPreview?.abort();
+    publish?.abort();
+    shell?.abort();
 
     this.#shellCommandQueue = Promise.resolve();
   }
@@ -1417,7 +1422,14 @@ export class WorkbenchStore {
 
       const { verseId } = await this.setupDeployConfig(shell, signal);
       checkAborted();
-      await this.commitModifiedFiles(signal);
+
+      try {
+        await this.commitModifiedFiles(signal);
+        checkAborted();
+      } catch (error) {
+        failedReason = 'commit failed';
+        throw error;
+      }
       checkAborted();
 
       const container = await this.container;
@@ -1428,9 +1440,15 @@ export class WorkbenchStore {
       const buildResult = await this.#runShellCommand(shell, `${SHELL_COMMANDS.BUILD_PROJECT} --base ./`, signal);
       checkAborted();
 
-      if (buildResult?.exitCode === 2) {
-        this.#handleBuildError(buildResult.output);
-        return;
+      const buildExitCode = buildResult?.exitCode;
+
+      if (buildExitCode !== 0) {
+        if (buildExitCode === 2) {
+          this.#handleBuildError(buildResult.output);
+        }
+
+        failedReason = `build failed`;
+        throw new Error(`${failedReason}: ${buildResult.output}`);
       }
 
       const wc = await this.container;
@@ -1469,8 +1487,16 @@ export class WorkbenchStore {
       }
       checkAborted();
 
-      const { tags } = await getTags(repoStore.get().path);
-      checkAborted();
+      let tags = [] as any[];
+
+      try {
+        const tagsResponse = await getTags(repoStore.get().path);
+        tags = tagsResponse.tags || [];
+        checkAborted();
+      } catch (error) {
+        failedReason = 'get tags failed';
+        throw error;
+      }
 
       const spinTag = tags.find((tag: any) => tag.name.startsWith('verse-from'));
       let parentVerseId;
@@ -1521,8 +1547,6 @@ export class WorkbenchStore {
   }
 
   #handleBuildError(output: string) {
-    logger.error('[Publish] Build Failed:', output);
-
     const alert = {
       type: 'build',
       title: 'Build Error',

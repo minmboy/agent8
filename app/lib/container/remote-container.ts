@@ -48,6 +48,12 @@ const BUFFER_CONFIG = {
   TRUNCATED_LOCAL_SIZE: 5000,
 };
 
+// Drain buffer configuration
+const DRAIN_BUFFER_CONFIG = {
+  MAX_TIMEOUT_MS: 500,
+  READ_TIMEOUT_MS: 200,
+};
+
 const STREAM_READ_IDLE_TIMEOUT_MS = 3000;
 
 const ROUTER_DOMAIN = 'agent8.verse8.net';
@@ -1445,17 +1451,48 @@ export class RemoteContainer implements Container {
       output = streams[0];
       internalOutput = streams[1];
 
+      /**
+       * Drain all data from internal stream buffer until empty
+       * Uses single timeout approach: if no data arrives within 200ms, stream is considered empty
+       * @param maxTimeMs - Maximum time to spend draining
+       */
+      const drainAllBuffer = async (maxTimeMs: number): Promise<void> => {
+        if (!internalOutput || internalOutput.locked) {
+          return;
+        }
+
+        const reader = internalOutput.getReader();
+        const deadline = Date.now() + maxTimeMs;
+
+        try {
+          while (Date.now() < deadline) {
+            const result = await Promise.race([
+              reader.read(),
+              new Promise<ReadableStreamReadResult<string>>((resolve) => {
+                setTimeout(() => resolve({ done: true, value: undefined }), DRAIN_BUFFER_CONFIG.READ_TIMEOUT_MS);
+              }),
+            ]);
+
+            if (result.done || !result.value) {
+              break;
+            }
+          }
+        } catch (error) {
+          logger.error('drainAllBuffer: Error:', error);
+        } finally {
+          reader.releaseLock();
+        }
+      };
+
       // Command execution implementation
       executeCommand = async (command: string): Promise<ExecutionResult> => {
-        // Command execution ID for logging (not a session ID)
         const commandExecutionId = v4().slice(0, 8);
-        logger.debug(`[${commandExecutionId}] executeCommand`, command);
+        logger.debug(`[${commandExecutionId}] executeCommand: ${command}`);
 
         // Set non-terminating process flag for timeout handling
         if (isNonTerminatingCommand(command)) {
           nonTerminatingProcessRunning = true;
         } else {
-          // Clear any existing timeout from previous non-terminating command
           if (readSetTimeoutId) {
             clearTimeout(readSetTimeoutId);
             readSetTimeoutId = null;
@@ -1465,10 +1502,12 @@ export class RemoteContainer implements Container {
         }
 
         try {
-          // Use currentTerminal instead of original terminal for input
           if (!currentTerminal) {
             throw new Error('No terminal attached to session');
           }
+
+          // Drain all data from internal stream buffer
+          await drainAllBuffer(DRAIN_BUFFER_CONFIG.MAX_TIMEOUT_MS);
 
           /*
            * Clear global output buffer to avoid confusion with previous command outputs
@@ -1479,7 +1518,7 @@ export class RemoteContainer implements Container {
           // Interrupt current execution
           currentTerminal.input('\x03');
 
-          // for dead lock prevention
+          // Deadlock prevention
           if (isWaitingForOscCode) {
             currentTerminal.input(':' + '\n');
           }
@@ -1494,6 +1533,7 @@ export class RemoteContainer implements Container {
           await waitTillOscCode('exit');
           logger.debug('terminal is responsive');
 
+          // Execute the actual command
           currentTerminal.input(command.trim() + '\n');
 
           // Wait for execution result
@@ -1504,7 +1544,6 @@ export class RemoteContainer implements Container {
             exitCode,
           };
         } finally {
-          // Always clean up state after command execution (success or failure)
           nonTerminatingProcessRunning = false;
 
           if (readSetTimeoutId) {
