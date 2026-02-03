@@ -1523,6 +1523,8 @@ export class RemoteContainer implements Container {
             currentTerminal.input(':' + '\n');
           }
 
+          logger.debug(`[${commandExecutionId}] waiting for prompt`, command);
+
           // Wait for prompt
           await waitTillOscCode('prompt');
 
