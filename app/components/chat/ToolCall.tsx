@@ -34,6 +34,12 @@ const MCP_SERVER_ICONS: Record<string, string> = {
   Audio: '/icons/Audio.svg',
   Skybox: '/icons/Skybox.svg',
   UI: '/icons/UI.svg',
+  Claythis: '/icons/Claythis.svg',
+};
+
+// MCP server display name mapping (for servers with different display names)
+const MCP_SERVER_DISPLAY_NAMES: Record<string, string> = {
+  Claythis: '2D-to-3D',
 };
 
 // Linked servers that should use parent server's icon and name
@@ -73,6 +79,16 @@ const getMcpServerIcon = (toolName: string): string => {
   return '/icons/Sparkle.svg';
 };
 
+const getMcpServerDisplayName = (toolName: string): string | null => {
+  const serverName = getMcpServerName(toolName);
+
+  if (serverName) {
+    return MCP_SERVER_DISPLAY_NAMES[serverName] || serverName;
+  }
+
+  return null;
+};
+
 export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
   const toolUI = useStore(toolUIStore);
   const currentTool = toolUI.tools?.[id] || {};
@@ -94,6 +110,7 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
   }
 
   const mcpServerName = getMcpServerName(toolCall.toolName);
+  const mcpServerDisplayName = getMcpServerDisplayName(toolCall.toolName);
   const iconPath = getMcpServerIcon(toolCall.toolName);
 
   return (
@@ -110,8 +127,10 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
       <div className="flex items-center gap-1 flex-[1_0_0]">
         <span className="text-body-sm text-tertiary">Generate</span>
         <div className="flex items-center gap-0.5">
-          <img src={iconPath} alt={mcpServerName || 'Tool'} className="w-4 h-4" />
-          <span className="text-body-sm text-secondary">{mcpServerName || toolCall.toolName}</span>
+          <img src={iconPath} alt={mcpServerDisplayName || mcpServerName || 'Tool'} className="w-4 h-4" />
+          <span className="text-body-sm text-secondary">
+            {mcpServerDisplayName || mcpServerName || toolCall.toolName}
+          </span>
         </div>
       </div>
     </div>
