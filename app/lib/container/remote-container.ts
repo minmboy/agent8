@@ -1526,7 +1526,7 @@ export class RemoteContainer implements Container {
           // Wait for prompt
           await waitTillOscCode('prompt');
 
-          // Execute test command
+          // Execute new command
           currentTerminal.input(':' + '\n');
           await waitTillOscCode('exit');
           logger.debug('terminal is responsive');
