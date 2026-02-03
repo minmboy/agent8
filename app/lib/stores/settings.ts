@@ -240,6 +240,14 @@ const getDefaultMCPServers = (): MCPServer[] => {
         description: 'Design CSS styles for game interfaces',
       },
       {
+        name: 'Claythis',
+        url: 'https://mcp-claythis-svc.verse8.io/mcp',
+        enabled: true,
+        version: MCP_TOOLS_VERSION,
+        v8AuthIntegrated: true,
+        description: 'Convert your 2D images here into 3D assets',
+      },
+      {
         name: 'Crossramp',
         url: 'https://mcp-crossramp-svc.verse8.io/mcp',
         enabled: true,

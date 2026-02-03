@@ -23,7 +23,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
 
   const defaultServerNames = import.meta.env?.VITE_DEFAULT_SERVER_NAMES
     ? JSON.parse(import.meta.env.VITE_DEFAULT_SERVER_NAMES)
-    : ['Image', 'Cinematic', 'Audio', 'Skybox', 'UI'];
+    : ['Image', 'Cinematic', 'Audio', 'Skybox', 'UI', 'Claythis'];
   const disabledServerNames = import.meta.env?.VITE_DISABLED_SERVER_NAMES
     ? JSON.parse(import.meta.env.VITE_DISABLED_SERVER_NAMES)
     : ['All-in-one'];
@@ -32,6 +32,14 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
   const isDisabledServer = (serverName: string) => disabledServerNames.includes(serverName);
   const isHiddenServer = (serverName: string) => hiddenServerNames.includes(serverName);
   const isDefaultServer = (serverName: string) => defaultServerNames.includes(serverName);
+
+  // UI display name mapping (for servers with different display names)
+  const getDisplayName = (serverName: string) => {
+    const displayNameMap: Record<string, string> = {
+      Claythis: '2D-to-3D',
+    };
+    return displayNameMap[serverName] || serverName;
+  };
 
   const linkedServers: Record<string, string[]> = {
     Image: ['Spritesheet'],
@@ -53,6 +61,8 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         return '/icons/Skybox.svg';
       case 'UI':
         return '/icons/UI.svg';
+      case 'Claythis':
+        return '/icons/Claythis.svg';
       default:
         return '/icons/Sparkle.svg';
     }
@@ -61,7 +71,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
   const getServerCredit = (serverName: string) => {
     switch (serverName) {
       case 'Image':
-        return '$0.05/call';
+        return '$0.2/call';
       case 'Cinematic':
         return '$2.5/call';
       case 'Audio':
@@ -70,12 +80,27 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         return '$0.2/call';
       case 'UI':
         return '$0.05/call';
+      case 'Claythis':
+        return '$0.5/call';
       default:
         return '$0.05/call';
     }
   };
 
   const [showServerManager, setShowServerManager] = useState<boolean>(false);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; right: number } | null>(null);
+
+  useEffect(() => {
+    if (showServerManager && isMobileView && triggerContainerRef.current) {
+      const rect = triggerContainerRef.current.getBoundingClientRect();
+
+      setDropdownPosition({
+        top: rect.top,
+        left: rect.left,
+        right: window.innerWidth - rect.right,
+      });
+    }
+  }, [showServerManager, isMobileView]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -203,7 +228,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Content
-                className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] font-primary text-[12px] font-medium leading-[150%] w-[292px] justify-between"
+                className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] font-primary text-body-md-medium w-[288px] justify-between"
                 sideOffset={5}
                 side="top"
                 align="end"
@@ -233,7 +258,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
           >
             {mcpServers.length > 0 ? (
               <div className="w-full">
-                <div className="max-h-[325px] tablet:max-h-[364.95px] overflow-y-auto">
+                <div className="max-h-[420px] overflow-y-auto">
                   {mcpServers
                     .map((server, index) => ({ server, index }))
                     .filter((item) => !isDisabledServer(item.server.name) && !isHiddenServer(item.server.name))
@@ -272,7 +297,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
                           <div className="flex flex-col justify-center items-start gap-1.6 flex-1 min-w-0">
                             <div className="flex items-center gap-1.6 self-stretch min-w-0">
                               {server.name === 'All-in-one' ||
-                              !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI'].includes(server.name) ? (
+                              !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI', 'Claythis'].includes(server.name) ? (
                                 <img
                                   src={getServerIcon(server.name)}
                                   alt={server.name}
@@ -288,7 +313,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
 
                               <div className="flex items-center gap-1.2 flex-1 min-w-0">
                                 <h4 className="text-[var(--color-text-primary,#FFF)] font-primary text-[14px] font-medium leading-[150%] break-all min-w-0 line-clamp-1">
-                                  {server.name}
+                                  {getDisplayName(server.name)}
                                 </h4>
                                 {isDefaultServer(server.name) && (
                                   <span className="text-[var(--color-text-accent-secondary,#FFCB48)] font-primary text-[14px] font-medium leading-[142.9%] flex-shrink-0">
@@ -322,7 +347,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
                     ))}
                 </div>
 
-                <div className="w-full flex justify-end px-2 pt-2 tablet:pt-3">
+                <div className="w-full flex justify-end px-2">
                   <button
                     onClick={() => setShowAddForm(true)}
                     className="text-[var(--color-text-interactive-primary,#11B9D2)] hover:text-[var(--color-text-interactive-primary-hovered,#1A92A4)] active:text-[var(--color-text-interactive-primary-pressed,#1A7583)] focus:text-[var(--color-text-interactive-primary,#11B9D2)] font-primary bg-transparent border-none text-[13px] tablet:text-[14px] font-semibold leading-[142.9%] font-feature-[ss10] px-[14px] py-[6px] tablet:py-[10px] transition-colors duration-200"
@@ -342,13 +367,15 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         {/* Mobile dropdown using portal */}
         {showServerManager &&
           isMobileView &&
+          dropdownPosition &&
           createPortal(
             <div className="fixed inset-0 z-[1100]" onClick={() => setShowServerManager(false)}>
               <motion.div
                 ref={dropdownRef}
-                className="fixed bottom-1/3 left-4 right-4 flex w-auto max-w-[330px] mx-auto py-[6.4px] px-0 flex-col items-start rounded-[8px] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))] bg-[var(--color-bg-interactive-neutral,#222428)] z-10"
+                className="fixed left-4 right-4 flex w-auto mx-auto py-[6.4px] px-0 flex-col items-start rounded-[8px] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))] bg-[var(--color-bg-interactive-neutral,#222428)] z-10"
                 style={{
                   boxShadow: '0px 8px 16px 0px rgba(0, 0, 0, 0.32), 0px 0px 8px 0px rgba(0, 0, 0, 0.28)',
+                  bottom: `${window.innerHeight - dropdownPosition.top + 12}px`,
                 }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -357,10 +384,10 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
               >
                 {mcpServers.length > 0 ? (
                   <div className="w-full">
-                    <div className="max-h-[325px] tablet:max-h-[364.95px] overflow-y-auto">
+                    <div className="max-h-[390px] overflow-y-auto">
                       {mcpServers
                         .map((server, index) => ({ server, index }))
-                        .filter((item) => !isDisabledServer(item.server.name))
+                        .filter((item) => !isDisabledServer(item.server.name) && !isHiddenServer(item.server.name))
                         .map(({ server, index }) => (
                           <div
                             key={index}
@@ -398,7 +425,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
                               <div className="flex flex-col justify-center items-start gap-1.6 flex-1 min-w-0">
                                 <div className="flex items-center gap-1.6 self-stretch min-w-0">
                                   {server.name === 'All-in-one' ||
-                                  !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI'].includes(server.name) ? (
+                                  !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI', 'Claythis'].includes(server.name) ? (
                                     <img
                                       src={getServerIcon(server.name)}
                                       alt={server.name}
@@ -420,7 +447,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
 
                                   <div className="flex items-center gap-1.2 flex-1 min-w-0">
                                     <h4 className="text-[var(--color-text-primary,#FFF)] font-primary text-[14px] font-medium leading-[150%] break-all min-w-0 line-clamp-1">
-                                      {server.name}
+                                      {getDisplayName(server.name)}
                                     </h4>
                                     {isDefaultServer(server.name) && (
                                       <span className="text-[var(--color-text-accent-secondary,#FFCB48)] font-primary text-[14px] font-medium leading-[142.9%] flex-shrink-0">
@@ -454,7 +481,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
                         ))}
                     </div>
 
-                    <div className="w-full flex justify-end px-2 pt-2 tablet:pt-3">
+                    <div className="w-full flex justify-end px-2">
                       <button
                         onClick={() => setShowAddForm(true)}
                         className="text-[var(--color-text-interactive-primary,#11B9D2)] hover:text-[var(--color-text-interactive-primary-hovered,#1A92A4)] active:text-[var(--color-text-interactive-primary-pressed,#1A7583)] focus:text-[var(--color-text-interactive-primary,#11B9D2)] font-primary bg-transparent border-none text-[13px] tablet:text-[14px] font-semibold leading-[142.9%] font-feature-[ss10] px-[14px] py-[6px] tablet:py-[10px] transition-colors duration-200"
