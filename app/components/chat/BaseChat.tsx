@@ -203,7 +203,6 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     },
     ref,
   ) => {
-    const TEXTAREA_MAX_HEIGHT = 200;
     const [recognition, setRecognition] = useState<SpeechRecognition | null>(null);
     const [transcript, setTranscript] = useState('');
     const [progressAnnotations, setProgressAnnotations] = useState<ProgressAnnotation[]>([]);
@@ -227,6 +226,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const mobilePreviewMode = useWorkbenchMobilePreviewMode();
     const isSmallViewportForWorkbench = useViewport(MOBILE_BREAKPOINT); // When workbench is visible
     const isSmallViewportForChat = useViewport(CHAT_MOBILE_BREAKPOINT); // When workbench is not mounted yet
+    const isXlViewport = useViewport(1280); // xl breakpoint (1280px)
+
+    // Adjust textarea max height based on screen size (compact mode for mobile/tablet pre-chat)
+    let TEXTAREA_MAX_HEIGHT = 135; // Default (desktop or tablet)
+
+    if (!chatStarted && isXlViewport) {
+      TEXTAREA_MAX_HEIGHT = 100; // Pre-chat on mobile/tablet
+    } else if (chatStarted && isMobileView) {
+      TEXTAREA_MAX_HEIGHT = 120; // Post-chat on mobile
+    }
 
     // Use different breakpoint based on whether workbench is visible
     const isSmallViewport = showWorkbench ? isSmallViewportForWorkbench : isSmallViewportForChat;
@@ -294,6 +303,37 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     useEffect(() => {
       onStreamingChange?.(isStreaming);
     }, [isStreaming, onStreamingChange]);
+
+    // Auto-adjust textarea height
+    useEffect(() => {
+      const textarea = textareaRef?.current;
+
+      if (textarea) {
+        // Use requestAnimationFrame to ensure we measure after browser paint
+        requestAnimationFrame(() => {
+          // Reset height to auto to get accurate scrollHeight
+          textarea.style.height = 'auto';
+
+          // Get the actual content height
+          const contentHeight = textarea.scrollHeight;
+
+          // Calculate new height (constrained between min and max)
+          const newHeight = Math.min(Math.max(contentHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
+
+          // Apply the new height with !important to override any CSS
+          textarea.style.setProperty('height', `${newHeight}px`, 'important');
+
+          // Only show scrollbar when content exceeds max height
+          const shouldScroll = contentHeight > TEXTAREA_MAX_HEIGHT;
+          textarea.style.setProperty('overflow-y', shouldScroll ? 'auto' : 'hidden', 'important');
+
+          // Add debug data attributes
+          textarea.setAttribute('data-max-height', String(TEXTAREA_MAX_HEIGHT));
+          textarea.setAttribute('data-calculated-height', String(newHeight));
+          textarea.setAttribute('data-should-scroll', String(shouldScroll));
+        });
+      }
+    }, [input, TEXTAREA_MAX_HEIGHT, chatStarted, isXlViewport]);
 
     // State to store scroll container ref
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
@@ -752,7 +792,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               <MainBackground zIndex={1} isMobileView={isMobileView} opacity={0.8} chatStarted={chatStarted} />
             )}
             {!chatStarted && (
-              <div className="flex flex-col items-center w-full mx-auto md:w-[727px] xl:w-full xl:max-h-[85svh] xl:min-h-0 xl:max-w-[1400px]">
+              <div className="flex flex-col items-center w-full mx-auto md:w-[727px] xl:w-full xl:max-h-[85svh] xl:min-h-0 xl:max-w-[1400px] mt-[45px] xl:mt-0">
                 {/* Background Image */}
                 <div
                   className={`absolute top-0 left-1/2 bottom-0 top-0 translate-x-[-50%] xl:inset-0 xl:translate-x-0 w-[890px] h-[426px] md:w-[1280px] md:h-[612px] xl:w-auto xl:h-auto pointer-events-none overflow-hidden z-0 bg-[url('/background-image.webp')] bg-cover bg-no-repeat opacity-50 xl:opacity-60`}
@@ -875,8 +915,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div
               className={classNames(`pt-0 pt-4 relative`, {
                 'h-full flex flex-col': chatStarted,
-                'md:pb-[100px]': !chatStarted,
-                'md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
+                'pb-[200px] md:pb-[100px]': !chatStarted,
+                'pb-[330px] md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
               })}
             >
               <ClientOnly>
@@ -921,14 +961,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
 
               <div
                 className={classNames(
-                  'flex flex-col gap-3 w-full mx-auto z-prompt transition-[bottom,max-width,padding] duration-300 ease-out',
+                  'flex flex-col gap-3 w-full mx-auto transition-[bottom,max-width,padding] duration-300 ease-out',
                   {
                     'sticky bottom-4 pr-4': chatStarted && !isSmallViewport,
                     'sticky bottom-0': chatStarted && isSmallViewport,
                     'pl-6': !isSmallViewport,
                     'tablet:max-w-chat': chatStarted,
-                    'md:-translate-y-[calc(50%+16px)] md:absolute md:left-1/2 md:translate-x-[-50%] max-w-[632px] !pl-0':
-                      !chatStarted, // Before starting the chat, there is a 600px limit on mobile devices.
+                    'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-8 max-w-[632px] !pl-0 z-[100]':
+                      !chatStarted,
+                    'z-prompt': chatStarted && (!isSmallViewport || mobilePreviewMode),
+                    'z-[1000]': chatStarted && isSmallViewport && !mobilePreviewMode,
                   },
                 )}
               >
@@ -958,16 +1000,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   )}
                 </div>
                 <div
-                  className={classNames(
-                    'flex flex-col self-stretch px-4 pt-[6px] pb-4 relative w-full mx-auto z-prompt',
-                    {
-                      'tablet:max-w-chat': chatStarted,
-                      'tablet:max-w-chat-before-start': !chatStarted,
-                      'bg-primary': !chatStarted,
-                      [styles.promptInputActive]: chatStarted && !isSmallViewport,
-                      [styles.promptInputActiveSmallViewport]: chatStarted && isSmallViewport,
-                    },
-                  )}
+                  className={classNames('flex flex-col self-stretch px-4 pt-[6px] pb-4 relative w-full mx-auto', {
+                    'tablet:max-w-chat': chatStarted,
+                    'tablet:max-w-chat-before-start': !chatStarted,
+                    'bg-primary': !chatStarted,
+                    [styles.promptInputActive]: chatStarted && !isSmallViewport,
+                    [styles.promptInputActiveSmallViewport]: chatStarted && isSmallViewport,
+                    'z-prompt': !chatStarted || !isSmallViewport || mobilePreviewMode,
+                    'z-[1000]': chatStarted && isSmallViewport && !mobilePreviewMode,
+                  })}
                   style={
                     !chatStarted
                       ? {
@@ -986,13 +1027,19 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   <FilePreview
                     attachmentUrlList={attachmentList ? attachmentList.map((attachment) => attachment.url) : []}
                     attachments={attachmentList}
+                    compact={isXlViewport || (chatStarted && isMobileView)}
                     onRemove={(index) => {
                       setAttachmentList?.((prev) => prev?.filter((_, i) => i !== index) || []);
                     }}
                   />
 
-                  <div className={classNames('relative shadow-xs backdrop-blur rounded-lg flex-1', 'flex')}>
+                  <div
+                    className={classNames('relative shadow-xs backdrop-blur rounded-lg flex-1', 'flex')}
+                    style={{ overflow: 'visible' }}
+                  >
                     <textarea
+                      id="chat-input"
+                      name="chat-input"
                       ref={textareaRef}
                       className={classNames(
                         'w-full outline-none resize-none bg-transparent text-[14px] font-medium text-primary placeholder-text-subtle',
@@ -1008,10 +1055,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         fontStyle: 'normal',
                         fontWeight: 500,
                         lineHeight: '142.9%',
-                        minHeight: `${TEXTAREA_MIN_HEIGHT}px`,
-                        maxHeight: `${TEXTAREA_MAX_HEIGHT}px`,
                         border: '1px solid transparent',
-                        overflowY: 'scroll',
                         resize: 'none',
                       }}
                       onDragEnter={(e) => {
