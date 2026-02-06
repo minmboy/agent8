@@ -17,7 +17,7 @@ import { motion } from 'framer-motion';
 
 import { useMobileView } from '~/lib/hooks/useMobileView';
 import useViewport from '~/lib/hooks';
-import { MOBILE_BREAKPOINT, CHAT_MOBILE_BREAKPOINT } from '~/lib/constants/viewport';
+import { MOBILE_BREAKPOINT, CHAT_MOBILE_BREAKPOINT, XL_BREAKPOINT } from '~/lib/constants/viewport';
 import styles from './BaseChat.module.scss';
 import { ExportChatButton } from '~/components/chat/chatExportAndImport/ExportChatButton';
 import { ExamplePrompts } from '~/components/chat/ExamplePrompts';
@@ -226,7 +226,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const mobilePreviewMode = useWorkbenchMobilePreviewMode();
     const isSmallViewportForWorkbench = useViewport(MOBILE_BREAKPOINT); // When workbench is visible
     const isSmallViewportForChat = useViewport(CHAT_MOBILE_BREAKPOINT); // When workbench is not mounted yet
-    const isXlViewport = useViewport(1280); // xl breakpoint (1280px)
+    const isXlViewport = useViewport(XL_BREAKPOINT); // XL breakpoint for compact mode
 
     // Adjust textarea max height based on screen size (compact mode for mobile/tablet pre-chat)
     let TEXTAREA_MAX_HEIGHT = 135; // Default (desktop or tablet)
