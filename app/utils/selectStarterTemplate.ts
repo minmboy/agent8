@@ -1,11 +1,9 @@
 import ignore from 'ignore';
 import { z } from 'zod';
 import type { TemplateSelectionResponse, TemplateSelection } from '~/types/template';
-import Cookies from 'js-cookie';
 import { extractZipTemplate } from './zipUtils';
 import type { FileMap } from '~/lib/stores/files';
 import { TEMPLATE_BASIC, TEMPLATE_MAP } from '~/constants/template';
-import { fetchWithCache, type FetchWithCacheOptions } from '~/lib/utils';
 import { FetchError } from './errors';
 import { getTurnstileHeaders } from '~/lib/turnstile/client';
 
@@ -69,106 +67,62 @@ export const selectStarterTemplate = async (options: { message: string; signal?:
   return {};
 };
 
+/**
+ * Download GitHub repo as ZIP archive and extract to FileMap.
+ * Public repos don't require a token. Single request instead of per-file API calls.
+ */
 const getGitHubRepoContent = async (repoName: string, path: string = '', env?: Env): Promise<FileMap> => {
-  const baseUrl = 'https://api.github.com';
-  const cacheOptions: FetchWithCacheOptions = { onlyUrl: true, forcePublic: true, ignoreVary: true };
+  const ref = env?.VITE_USE_PRODUCTION_TEMPLATE === 'true' ? 'production' : 'main';
+  const archiveUrl = `https://github.com/${repoName}/archive/${ref}.zip`;
 
-  try {
-    const token = Cookies.get('githubToken') || import.meta.env.VITE_GITHUB_ACCESS_TOKEN || env?.GITHUB_TOKEN;
-    const headers: HeadersInit = {
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'agent8',
-    };
+  const response = await fetch(archiveUrl, { redirect: 'follow' });
 
-    // Add your GitHub token if needed
-    if (token) {
-      headers.Authorization = 'token ' + token;
-    }
-
-    const ref = env?.VITE_USE_PRODUCTION_TEMPLATE === 'true' ? 'production' : 'main';
-
-    const url = `${baseUrl}/repos/${repoName}/contents/${path}?ref=${ref}`;
-    const request = new Request(url, { headers });
-    const response = await fetchWithCache(request, cacheOptions);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data: any = await response.json();
-
-    const fileMap: FileMap = {};
-
-    // If it's a single file, return its content
-    if (!Array.isArray(data)) {
-      if (data.type === 'file') {
-        /*
-         * If it's a file, get its content
-         * Use TextDecoder to properly handle Korean and other non-ASCII characters
-         */
-        const content = new TextDecoder('utf-8').decode(Uint8Array.from(atob(data.content), (c) => c.charCodeAt(0)));
-        const filePath = `${data.path}`;
-        fileMap[filePath] = {
-          type: 'file',
-          content,
-          isBinary: false,
-        };
-
-        return fileMap;
-      }
-    }
-
-    // Process directory contents recursively
-    await Promise.all(
-      data.map(async (item: any) => {
-        if (item.type === 'dir') {
-          // Recursively get contents of subdirectories
-          const subDirContents = await getGitHubRepoContent(repoName, item.path, env);
-
-          // Merge subdirectory contents into the main fileMap
-          Object.assign(fileMap, subDirContents);
-        } else if (item.type === 'file') {
-          // Fetch file content (construct URL with ref if provided)
-          const fileUrl = `${baseUrl}/repos/${repoName}/contents/${item.path}?ref=${ref}`;
-          const request = new Request(fileUrl, { headers });
-          const fileResponse = await fetchWithCache(request, cacheOptions);
-          const fileData: any = await fileResponse.json();
-
-          // TextDecoder를 사용하여 UTF-8로 올바르게 디코딩
-          const content = new TextDecoder('utf-8').decode(
-            Uint8Array.from(atob(fileData.content), (c) => c.charCodeAt(0)),
-          );
-
-          const filePath = `${item.path}`;
-          fileMap[filePath] = {
-            type: 'file',
-            content,
-            isBinary: false,
-          };
-        }
-      }),
-    );
-
-    return fileMap;
-  } catch (error) {
-    console.error('Error fetching repo contents:', error);
-    throw error;
+  if (!response.ok) {
+    throw new Error(`Failed to download GitHub archive: ${response.status} ${response.statusText}`);
   }
+
+  const zipBuffer = await response.arrayBuffer();
+  const rawFileMap = await extractZipTemplate(zipBuffer);
+
+  /*
+   * GitHub archive extracts to {repo-name}-{ref}/ folder, strip the prefix
+   * e.g., "agent8-templates-main/basic-3d-freeview/..." -> "basic-3d-freeview/..."
+   */
+  const fileMap: FileMap = {};
+  const prefixPattern = /^[^/]+\//; // Matches first directory level
+
+  // Exclude git-related files (same as container-agent)
+  const GIT_ENTRIES = new Set(['.git', '.gitmodules', '.gitattributes', '.gitkeep']);
+
+  for (const [filePath, fileData] of Object.entries(rawFileMap)) {
+    const strippedPath = filePath.replace(prefixPattern, '');
+
+    // Skip git-related files
+    const fileName = strippedPath.split('/').pop() || '';
+
+    if (GIT_ENTRIES.has(fileName)) {
+      continue;
+    }
+
+    // If path is specified, only include files under that path and strip the path prefix
+    if (path) {
+      if (strippedPath.startsWith(path + '/')) {
+        const relativePath = strippedPath.slice(path.length + 1);
+        fileMap[relativePath] = fileData;
+      }
+    } else {
+      fileMap[strippedPath] = fileData;
+    }
+  }
+
+  return fileMap;
 };
 
 async function getTemplateFileMap(githubRepo: string, path: string, env?: Env): Promise<FileMap | undefined> {
   try {
     const files = await getGitHubRepoContent(githubRepo, path, env);
 
-    const fileMap: FileMap = {};
-
-    if (path) {
-      for (const key in files) {
-        fileMap[key.replace(path + '/', '')] = files[key];
-      }
-    }
-
-    return fileMap;
+    return Object.keys(files).length > 0 ? files : undefined;
   } catch (error) {
     console.log('[Template] GitHub fetch failed, using fallback:', path, error);
 
