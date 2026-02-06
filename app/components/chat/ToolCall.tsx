@@ -47,8 +47,36 @@ const LINKED_SERVERS: Record<string, string> = {
   Spritesheet: 'Image',
 };
 
-// Hidden MCP servers that should not show in UI
-const HIDDEN_MCP_SERVERS = ['Crossramp'];
+// Tool Use whitelist - tools that display "Tool Use" text (based on CSV "Tool Use" column)
+const TOOL_USE_WHITELIST = [
+  // Image tools
+  'image_asset_generate',
+  'image_variation_generate',
+
+  // Spritesheet tools
+  'spritesheet_generate',
+  'spritesheet_variation_generate',
+
+  // Cinematic tools
+  'cinematic_asset_generate',
+
+  // Audio tools
+  'music_generate',
+  'sfx_generate',
+
+  // Skybox tools
+  'skybox_generate',
+
+  // Claythis (2D-to-3D) tools
+  'claythis_3d_generate',
+
+  // UI Theme tools
+  'ui_theme_list',
+  'ui_theme_style',
+
+  // Story Protocol tools
+  'story_ip_to_variation_workflow',
+];
 
 // All MCP server names (including linked servers)
 const ALL_MCP_SERVERS = [...Object.keys(MCP_SERVER_ICONS), ...Object.keys(LINKED_SERVERS)];
@@ -100,14 +128,19 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     return null;
   }
 
-  // Hide tools from hidden MCP servers
-  const isHiddenMcpTool = HIDDEN_MCP_SERVERS.some(
-    (serverName) => toolCall.toolName.startsWith(serverName + '_') || toolCall.toolName === serverName,
-  );
+  // Hide tools from hidden MCP servers (Crossramp is hidden)
+  const isHiddenMcpTool = toolCall.toolName.startsWith('Crossramp_') || toolCall.toolName === 'Crossramp';
 
   if (isHiddenMcpTool) {
     return null;
   }
+
+  // Determine label: "Tool Use" or "Check"
+  const isToolUseTool = TOOL_USE_WHITELIST.some((whitelistedTool) =>
+    toolCall.toolName.toLowerCase().includes(whitelistedTool.toLowerCase()),
+  );
+
+  const toolLabel = isToolUseTool ? 'Tool Use' : 'Check';
 
   const mcpServerName = getMcpServerName(toolCall.toolName);
   const mcpServerDisplayName = getMcpServerDisplayName(toolCall.toolName);
@@ -125,7 +158,7 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
         )}
       </div>
       <div className="flex items-center gap-1 flex-[1_0_0]">
-        <span className="text-body-sm text-tertiary">Generate</span>
+        <span className="text-body-sm text-tertiary">{toolLabel}</span>
         <div className="flex items-center gap-0.5">
           <img src={iconPath} alt={mcpServerDisplayName || mcpServerName || 'Tool'} className="w-4 h-4" />
           <span className="text-body-sm text-secondary">
