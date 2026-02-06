@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useSettings } from '~/lib/hooks/useSettings';
 import { classNames } from '~/utils/classNames';
 import { useMobileView } from '~/lib/hooks/useMobileView';
 import * as Tooltip from '@radix-ui/react-tooltip';
+import CustomButton from '~/components/ui/CustomButton';
+import { PlusIcon } from 'lucide-react';
 
 // MCP Server Manager Component
 const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = false }) => {
@@ -23,7 +25,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
 
   const defaultServerNames = import.meta.env?.VITE_DEFAULT_SERVER_NAMES
     ? JSON.parse(import.meta.env.VITE_DEFAULT_SERVER_NAMES)
-    : ['Image', 'Cinematic', 'Audio', 'Skybox', 'UI'];
+    : ['Image', 'Cinematic', 'Audio', 'Skybox', 'UI', 'Claythis'];
   const disabledServerNames = import.meta.env?.VITE_DISABLED_SERVER_NAMES
     ? JSON.parse(import.meta.env.VITE_DISABLED_SERVER_NAMES)
     : ['All-in-one'];
@@ -32,6 +34,14 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
   const isDisabledServer = (serverName: string) => disabledServerNames.includes(serverName);
   const isHiddenServer = (serverName: string) => hiddenServerNames.includes(serverName);
   const isDefaultServer = (serverName: string) => defaultServerNames.includes(serverName);
+
+  // UI display name mapping (for servers with different display names)
+  const getDisplayName = (serverName: string) => {
+    const displayNameMap: Record<string, string> = {
+      Claythis: '2D-to-3D',
+    };
+    return displayNameMap[serverName] || serverName;
+  };
 
   const linkedServers: Record<string, string[]> = {
     Image: ['Spritesheet'],
@@ -53,6 +63,8 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         return '/icons/Skybox.svg';
       case 'UI':
         return '/icons/UI.svg';
+      case 'Claythis':
+        return '/icons/Claythis.svg';
       default:
         return '/icons/Sparkle.svg';
     }
@@ -61,7 +73,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
   const getServerCredit = (serverName: string) => {
     switch (serverName) {
       case 'Image':
-        return '$0.05/call';
+        return '$0.2/call';
       case 'Cinematic':
         return '$2.5/call';
       case 'Audio':
@@ -70,12 +82,54 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         return '$0.2/call';
       case 'UI':
         return '$0.05/call';
+      case 'Claythis':
+        return '$0.5/call';
       default:
         return '$0.05/call';
     }
   };
 
   const [showServerManager, setShowServerManager] = useState<boolean>(false);
+  const [gridColumns, setGridColumns] = useState<number>(3);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  // Calculate dropdown max height based on view mode and grid columns
+  const dropdownMaxHeight = useMemo(() => {
+    if (isMobileView) {
+      return chatStarted ? '182px' : '220px';
+    }
+
+    if (gridColumns === 3) {
+      return '260px';
+    }
+
+    return chatStarted ? '310px' : '420px';
+  }, [isMobileView, gridColumns, chatStarted]);
+
+  useEffect(() => {
+    if (!isMobileView && showServerManager && gridContainerRef.current) {
+      const handleResize = () => {
+        if (gridContainerRef.current) {
+          const width = gridContainerRef.current.offsetWidth;
+          setGridColumns(width <= 450 ? 2 : 3);
+        }
+      };
+
+      handleResize();
+
+      const resizeObserver = new ResizeObserver(() => {
+        handleResize();
+      });
+
+      resizeObserver.observe(gridContainerRef.current);
+
+      return () => {
+        resizeObserver.disconnect();
+      };
+    }
+
+    return undefined;
+  }, [showServerManager, isMobileView]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -159,319 +213,241 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
     removeMCPServer(index);
   };
 
+  const renderServerItem = (server: any, index: number, isDefault: boolean) => {
+    if (isDefault) {
+      return (
+        <>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center gap-1.5 flex-1">
+              <img src={getServerIcon(server.name)} alt={server.name} className="w-5 h-5 flex-shrink-0" />
+
+              <h4 className="text-body-md-medium text-primary truncate flex-1">{getDisplayName(server.name)}</h4>
+
+              <button
+                type="button"
+                className={classNames(
+                  'flex w-4 h-4 p-[var(--spacing-0,0px)] flex-col items-start gap-[var(--spacing-0,0px)] aspect-square rounded-[var(--border-radius-2,2px)] cursor-pointer',
+                  server.enabled
+                    ? 'bg-interactive-primary'
+                    : 'bg-interactive-neutral border border-solid border-interactive-primary',
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggleServer(index, !server.enabled);
+                }}
+                aria-pressed={server.enabled}
+                aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} server`}
+              >
+                {server.enabled && <img src="/icons/Check.svg" alt="Selected" className="w-full h-full" />}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-body-sm text-tertiary line-clamp-2 w-full">{server.description}</p>
+
+          <span className="text-accent-secondary text-body-sm">{getServerCredit(server.name)}</span>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <button
+          className="flex w-6 px-0.5 justify-center items-center gap-[10px] bg-transparent-subtle"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRemoveServer(index);
+          }}
+          aria-label={`Remove ${server.name} server`}
+        >
+          <img src="/icons/Close.svg" alt="Close" className="w-5 h-5" />
+        </button>
+        <div className="flex flex-col items-start gap-[10px] py-[10px] flex-[1_0_0] overflow-hidden">
+          <div className="flex justify-between items-start self-stretch">
+            <h4 className="text-body-md-medium text-primary truncate flex-1 min-w-0">{getDisplayName(server.name)}</h4>
+            <button
+              type="button"
+              className={classNames(
+                'flex w-4 h-4 p-[var(--spacing-0,0px)] flex-col items-start gap-[var(--spacing-0,0px)] aspect-square rounded-[var(--border-radius-2,2px)] cursor-pointer',
+                server.enabled
+                  ? 'bg-interactive-primary'
+                  : 'bg-interactive-neutral border border-solid border-interactive-primary',
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleServer(index, !server.enabled);
+              }}
+              aria-pressed={server.enabled}
+              aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} server`}
+            >
+              {server.enabled && <img src="/icons/Check.svg" alt="Selected" className="w-full h-full" />}
+            </button>
+          </div>
+          <span className="text-body-sm text-tertiary line-clamp-2 w-full">{server.url}</span>
+        </div>
+      </>
+    );
+  };
+
+  const sortedAndFilteredServers = useMemo(() => {
+    return mcpServers
+      .map((server, index) => ({ server, index }))
+      .filter((item) => !isDisabledServer(item.server.name) && !isHiddenServer(item.server.name))
+      .sort((a, b) => {
+        const aIsDefault = isDefaultServer(a.server.name);
+        const bIsDefault = isDefaultServer(b.server.name);
+
+        if (aIsDefault && !bIsDefault) {
+          return -1;
+        }
+
+        if (!aIsDefault && bIsDefault) {
+          return 1;
+        }
+
+        return 0;
+      });
+  }, [mcpServers]);
+
+  const activeServers = useMemo(() => {
+    return sortedAndFilteredServers.filter((item) => item.server.enabled);
+  }, [sortedAndFilteredServers]);
+
   return (
     <div
-      className={classNames('w-full mx-auto', {
+      className={classNames('w-full mx-auto flex flex-col', {
         'tablet:max-w-chat': chatStarted,
         'tablet:max-w-chat-before-start': !chatStarted,
       })}
     >
-      <div className="flex items-center justify-between flex-wrap self-stretch relative">
-        {hasActiveTools && <span className="text-subtle text-heading-xs">Tools Active</span>}
-
-        <div ref={triggerContainerRef} className="flex items-center justify-center gap-3">
-          {mcpServers
-            .map((server, index) => ({ server, index }))
-            .filter(
-              (item) => item.server.enabled && !isDisabledServer(item.server.name) && !isHiddenServer(item.server.name),
-            )
-            .map(({ server, index }) => (
+      {/* Desktop & Mobile dropdown - positioned above */}
+      {showServerManager && (
+        <motion.div
+          ref={dropdownRef}
+          className="flex w-full flex-col items-start rounded-[8px] bg-transparent mb-2 relative z-[999]"
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          {mcpServers.length > 0 ? (
+            <div className="w-full" ref={gridContainerRef}>
               <div
-                key={index}
-                className="flex justify-center items-center cursor-pointer"
-                onClick={() => setShowServerManager(!showServerManager)}
+                className="overflow-y-auto -mx-2"
+                style={{
+                  maxHeight: dropdownMaxHeight,
+                }}
               >
-                <img src={getServerIcon(server.name)} alt={server.name} className="w-5 h-5" />
-              </div>
-            ))}
+                <div
+                  className="inline-grid self-stretch"
+                  style={{
+                    rowGap: '8px',
+                    columnGap: '6px',
+                    gridTemplateRows: 'repeat(1, fit-content(100%))',
+                    gridTemplateColumns: isMobileView
+                      ? 'repeat(2, minmax(0, 1fr))'
+                      : `repeat(${gridColumns}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {sortedAndFilteredServers.map(({ server, index }) => {
+                    const isDefault = isDefaultServer(server.name);
 
-          <Tooltip.Root>
-            <Tooltip.Trigger asChild>
-              <button
-                ref={buttonRef}
-                onClick={() => setShowServerManager(!showServerManager)}
-                className={classNames(
-                  hasActiveTools
-                    ? 'flex w-[28px] min-h-[28px] max-h-[28px] justify-center items-center rounded-[var(--border-radius-circle,99999px)] border border-solid border-[var(--color-border-interactive-neutral,rgba(255,255,255,0.18))] bg-[var(--color-bg-interactive-neutral,#222428)] hover:bg-[var(--color-bg-interactive-neutral-hovered,#32363C)] active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)] focus:bg-[var(--color-bg-interactive-neutral,#222428)]'
-                    : 'flex min-h-8 max-h-8 px-[14px] py-[8px] justify-center items-center gap-1.5 rounded-full border border-white/18 bg-[#222428] hover:bg-[var(--color-bg-interactive-neutral-hovered,#32363C)] active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)] focus:bg-[var(--color-bg-interactive-neutral,#222428)] text-xs font-medium hover:text-gray-500',
-                  'transition-colors duration-200',
-                )}
-              >
-                <img src="/icons/Plus.svg" alt="Plus" className={hasActiveTools ? 'w-5 h-5' : ''} />
-                {!hasActiveTools && <span className="font-normal text-cyan-400 text-[14px]">Use Tools</span>}
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content
-                className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] font-primary text-body-md-medium w-[288px] justify-between"
-                sideOffset={5}
-                side="top"
-                align="end"
-                alignOffset={0}
-              >
-                Use it to create images, cinematics, audio, skyboxes, and UI elements
-                <Tooltip.Arrow className="fill-[var(--color-bg-inverse,#F3F5F8)]" />
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </div>
-
-        {showServerManager && !isMobileView && (
-          <motion.div
-            ref={dropdownRef}
-            className={classNames(
-              'absolute flex w-[330px] py-[6.4px] px-0 flex-col items-start rounded-[8px] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))] bg-[var(--color-bg-interactive-neutral,#222428)] z-10',
-              'bottom-full mb-2',
-              hasActiveTools ? 'right-0' : 'left-0',
-            )}
-            style={{
-              boxShadow: '0px 8px 16px 0px rgba(0, 0, 0, 0.32), 0px 0px 8px 0px rgba(0, 0, 0, 0.28)',
-            }}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-          >
-            {mcpServers.length > 0 ? (
-              <div className="w-full">
-                <div className="max-h-[325px] tablet:max-h-[364.95px] overflow-y-auto">
-                  {mcpServers
-                    .map((server, index) => ({ server, index }))
-                    .filter((item) => !isDisabledServer(item.server.name) && !isHiddenServer(item.server.name))
-                    .map(({ server, index }) => (
+                    return (
                       <div
                         key={index}
                         className={classNames(
-                          'flex items-center justify-between w-full',
-                          'px-4 py-[10px] tablet:py-3.2',
-                          'transition-all duration-200 cursor-pointer',
+                          'flex gap-2.5 rounded-lg cursor-pointer',
+                          isDefault ? 'flex-col items-start flex-1 px-3 py-[10px]' : 'items-stretch pr-3',
                           server.enabled
-                            ? 'bg-[var(--color-bg-interactive-selected,rgba(17,185,210,0.20))] hover:bg-[rgba(17,185,210,0.30)]'
-                            : 'hover:bg-bolt-elements-item-backgroundActive active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)]',
+                            ? 'border border-solid border-interactive-selected bg-interactive-neutral'
+                            : 'border border-solid border-tertiary bg-interactive-neutral-subtle hover:bg-interactive-neutral-subtle-hovered active:bg-interactive-neutral-subtle-hovered',
                         )}
                         onClick={() => handleToggleServer(index, !server.enabled)}
                       >
-                        <div className="flex items-center gap-4.8">
-                          <button
-                            type="button"
-                            className={classNames(
-                              'flex w-4 h-4 p-[var(--spacing-0,0px)] flex-col items-start gap-[var(--spacing-0,0px)] aspect-square rounded-[var(--border-radius-2,2px)] cursor-pointer',
-                              server.enabled
-                                ? 'bg-[var(--color-bg-interactive-primary,#1A92A4)]'
-                                : 'bg-[#383838] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))]',
-                            )}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleServer(index, !server.enabled);
-                            }}
-                            aria-pressed={server.enabled}
-                            aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} server`}
-                          >
-                            {server.enabled && <img src="/icons/Check.svg" alt="Selected" className="w-full h-full" />}
-                          </button>
-
-                          <div className="flex flex-col justify-center items-start gap-1.6 flex-1 min-w-0">
-                            <div className="flex items-center gap-1.6 self-stretch min-w-0">
-                              {server.name === 'All-in-one' ||
-                              !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI'].includes(server.name) ? (
-                                <img
-                                  src={getServerIcon(server.name)}
-                                  alt={server.name}
-                                  className={classNames('w-5 h-5 flex-shrink-0', server.enabled ? '' : 'opacity-60')}
-                                />
-                              ) : (
-                                <img
-                                  src={getServerIcon(server.name)}
-                                  alt={server.name}
-                                  className={classNames('w-5 h-5 flex-shrink-0', server.enabled ? '' : 'opacity-60')}
-                                />
-                              )}
-
-                              <div className="flex items-center gap-1.2 flex-1 min-w-0">
-                                <h4 className="text-[var(--color-text-primary,#FFF)] font-primary text-[14px] font-medium leading-[150%] break-all min-w-0 line-clamp-1">
-                                  {server.name}
-                                </h4>
-                                {isDefaultServer(server.name) && (
-                                  <span className="text-[var(--color-text-accent-secondary,#FFCB48)] font-primary text-[14px] font-medium leading-[142.9%] flex-shrink-0">
-                                    {getServerCredit(server.name)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="w-full min-w-0">
-                              <p className="text-[12px] font-primary font-medium leading-[142.9%] text-[var(--color-text-tertiary,#99A2B0)] break-all w-full line-clamp-3">
-                                {isDefaultServer(server.name) ? server.description : server.url}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {!isDefaultServer(server.name) && (
-                          <button
-                            className="ml-2 p-1 bg-transparent flex-shrink-0 min-w-[28px] min-h-[28px] flex items-center justify-center"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveServer(index);
-                            }}
-                            aria-label={`Remove ${server.name} server`}
-                          >
-                            <img src="/icons/Close.svg" alt="Remove" className="w-5 h-5" />
-                          </button>
-                        )}
+                        {renderServerItem(server, index, isDefault)}
                       </div>
-                    ))}
-                </div>
-
-                <div className="w-full flex justify-end px-2 pt-2 tablet:pt-3">
-                  <button
-                    onClick={() => setShowAddForm(true)}
-                    className="text-[var(--color-text-interactive-primary,#11B9D2)] hover:text-[var(--color-text-interactive-primary-hovered,#1A92A4)] active:text-[var(--color-text-interactive-primary-pressed,#1A7583)] focus:text-[var(--color-text-interactive-primary,#11B9D2)] font-primary bg-transparent border-none text-[13px] tablet:text-[14px] font-semibold leading-[142.9%] font-feature-[ss10] px-[14px] py-[6px] tablet:py-[10px] transition-colors duration-200"
-                  >
-                    Add Custom MCP Tool
-                  </button>
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <div className="w-full text-center py-3.2 px-3.2 text-bolt-elements-textSecondary text-[11.2px]">
-                No MCP servers registered. Add a new server to get started.
-              </div>
-            )}
-          </motion.div>
-        )}
-
-        {/* Mobile dropdown using portal */}
-        {showServerManager &&
-          isMobileView &&
-          createPortal(
-            <div className="fixed inset-0 z-[1100]" onClick={() => setShowServerManager(false)}>
-              <motion.div
-                ref={dropdownRef}
-                className="fixed bottom-1/3 left-4 right-4 flex w-auto max-w-[330px] mx-auto py-[6.4px] px-0 flex-col items-start rounded-[8px] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))] bg-[var(--color-bg-interactive-neutral,#222428)] z-10"
-                style={{
-                  boxShadow: '0px 8px 16px 0px rgba(0, 0, 0, 0.32), 0px 0px 8px 0px rgba(0, 0, 0, 0.28)',
-                }}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {mcpServers.length > 0 ? (
-                  <div className="w-full">
-                    <div className="max-h-[325px] tablet:max-h-[364.95px] overflow-y-auto">
-                      {mcpServers
-                        .map((server, index) => ({ server, index }))
-                        .filter((item) => !isDisabledServer(item.server.name))
-                        .map(({ server, index }) => (
-                          <div
-                            key={index}
-                            className={classNames(
-                              'flex items-center justify-between w-full',
-                              'px-4 py-[10px] tablet:py-3.2',
-                              'transition-all duration-200 cursor-pointer',
-                              server.enabled
-                                ? 'bg-[var(--color-bg-interactive-selected,rgba(17,185,210,0.20))] hover:bg-[rgba(17,185,210,0.30)]'
-                                : 'hover:bg-bolt-elements-item-backgroundActive active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)]',
-                            )}
-                            onClick={() => handleToggleServer(index, !server.enabled)}
-                          >
-                            <div className="flex items-center gap-4.8">
-                              <button
-                                type="button"
-                                className={classNames(
-                                  'flex w-4 h-4 p-[var(--spacing-0,0px)] flex-col items-start gap-[var(--spacing-0,0px)] aspect-square rounded-[var(--border-radius-2,2px)] cursor-pointer',
-                                  server.enabled
-                                    ? 'bg-[var(--color-bg-interactive-primary,#1A92A4)]'
-                                    : 'bg-[#383838] border border-solid border-[var(--color-border-tertiary,rgba(255,255,255,0.12))]',
-                                )}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleServer(index, !server.enabled);
-                                }}
-                                aria-pressed={server.enabled}
-                                aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name} server`}
-                              >
-                                {server.enabled && (
-                                  <img src="/icons/Check.svg" alt="Selected" className="w-full h-full" />
-                                )}
-                              </button>
-
-                              <div className="flex flex-col justify-center items-start gap-1.6 flex-1 min-w-0">
-                                <div className="flex items-center gap-1.6 self-stretch min-w-0">
-                                  {server.name === 'All-in-one' ||
-                                  !['Image', 'Skybox', 'Cinematic', 'Audio', 'UI'].includes(server.name) ? (
-                                    <img
-                                      src={getServerIcon(server.name)}
-                                      alt={server.name}
-                                      className={classNames(
-                                        'w-5 h-5 flex-shrink-0',
-                                        server.enabled ? '' : 'opacity-60',
-                                      )}
-                                    />
-                                  ) : (
-                                    <img
-                                      src={getServerIcon(server.name)}
-                                      alt={server.name}
-                                      className={classNames(
-                                        'w-5 h-5 flex-shrink-0',
-                                        server.enabled ? '' : 'opacity-60',
-                                      )}
-                                    />
-                                  )}
-
-                                  <div className="flex items-center gap-1.2 flex-1 min-w-0">
-                                    <h4 className="text-[var(--color-text-primary,#FFF)] font-primary text-[14px] font-medium leading-[150%] break-all min-w-0 line-clamp-1">
-                                      {server.name}
-                                    </h4>
-                                    {isDefaultServer(server.name) && (
-                                      <span className="text-[var(--color-text-accent-secondary,#FFCB48)] font-primary text-[14px] font-medium leading-[142.9%] flex-shrink-0">
-                                        {getServerCredit(server.name)}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <div className="w-full min-w-0">
-                                  <p className="text-[12px] font-primary font-medium leading-[142.9%] text-[var(--color-text-tertiary,#99A2B0)] break-all w-full line-clamp-3">
-                                    {isDefaultServer(server.name) ? server.description : server.url}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-
-                            {!isDefaultServer(server.name) && (
-                              <button
-                                className="ml-2 p-1 bg-transparent flex-shrink-0 min-w-[28px] min-h-[28px] flex items-center justify-center"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveServer(index);
-                                }}
-                                aria-label={`Remove ${server.name} server`}
-                              >
-                                <img src="/icons/Close.svg" alt="Remove" className="w-5 h-5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-
-                    <div className="w-full flex justify-end px-2 pt-2 tablet:pt-3">
-                      <button
-                        onClick={() => setShowAddForm(true)}
-                        className="text-[var(--color-text-interactive-primary,#11B9D2)] hover:text-[var(--color-text-interactive-primary-hovered,#1A92A4)] active:text-[var(--color-text-interactive-primary-pressed,#1A7583)] focus:text-[var(--color-text-interactive-primary,#11B9D2)] font-primary bg-transparent border-none text-[13px] tablet:text-[14px] font-semibold leading-[142.9%] font-feature-[ss10] px-[14px] py-[6px] tablet:py-[10px] transition-colors duration-200"
-                      >
-                        Add Custom MCP Tool
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-full text-center py-3.2 px-3.2 text-bolt-elements-textSecondary text-[11.2px]">
-                    No MCP servers registered. Add a new server to get started.
-                  </div>
-                )}
-              </motion.div>
-            </div>,
-            document.body,
+            </div>
+          ) : (
+            <div className="w-full text-center py-3.2 px-3.2 text-bolt-elements-textSecondary text-[11.2px]">
+              No MCP servers registered. Add a new server to get started.
+            </div>
           )}
+        </motion.div>
+      )}
+
+      {/* Tools Active button area - positioned below */}
+      <div
+        className={classNames(
+          'flex items-center justify-between flex-wrap self-stretch',
+          showServerManager ? '-mx-2' : '',
+        )}
+      >
+        {showServerManager ? (
+          <>
+            {/* When dropdown is open: Add Custom MCP Tool button */}
+            <CustomButton variant="secondary-text" size="sm" onClick={() => setShowAddForm(true)}>
+              <PlusIcon size={20} />
+              Add Custom MCP Tool
+            </CustomButton>
+
+            {/* When dropdown is open: Apply button */}
+            <CustomButton variant="primary-text" size="sm" onClick={() => setShowServerManager(false)}>
+              Apply
+            </CustomButton>
+          </>
+        ) : (
+          <>
+            {/* When dropdown is closed: Tools Active text */}
+            {hasActiveTools && <span className="text-subtle text-heading-xs">Tools Active</span>}
+
+            {/* When dropdown is closed: icons + Use Tools button */}
+            <div ref={triggerContainerRef} className="flex items-center justify-center gap-3">
+              {activeServers.map(({ server, index }) => (
+                <div
+                  key={index}
+                  className="flex justify-center items-center cursor-pointer"
+                  onClick={() => setShowServerManager(!showServerManager)}
+                >
+                  <img src={getServerIcon(server.name)} alt={server.name} className="w-5 h-5" />
+                </div>
+              ))}
+
+              <Tooltip.Root>
+                <Tooltip.Trigger asChild>
+                  <button
+                    ref={buttonRef}
+                    onClick={() => setShowServerManager(!showServerManager)}
+                    className={classNames(
+                      hasActiveTools
+                        ? 'flex w-[28px] min-h-[28px] max-h-[28px] justify-center items-center rounded-[var(--border-radius-circle,99999px)] border border-solid border-[var(--color-border-interactive-neutral,rgba(255,255,255,0.18))] bg-[var(--color-bg-interactive-neutral,#222428)] hover:bg-[var(--color-bg-interactive-neutral-hovered,#32363C)] active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)] focus:bg-[var(--color-bg-interactive-neutral,#222428)]'
+                        : 'flex min-h-8 max-h-8 px-[14px] py-[8px] justify-center items-center gap-1.5 rounded-full border border-white/18 bg-[#222428] hover:bg-[var(--color-bg-interactive-neutral-hovered,#32363C)] active:bg-[var(--color-bg-interactive-neutral-pressed,#464C54)] focus:bg-[var(--color-bg-interactive-neutral,#222428)] text-xs font-medium hover:text-gray-500',
+                      'transition-colors duration-200',
+                    )}
+                  >
+                    <img src="/icons/Plus.svg" alt="Plus" className={hasActiveTools ? 'w-5 h-5' : ''} />
+                    {!hasActiveTools && <span className="font-normal text-cyan-400 text-[14px]">Use Tools</span>}
+                  </button>
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Content
+                    className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] font-primary text-body-md-medium w-[288px] justify-between"
+                    sideOffset={5}
+                    side="top"
+                    align="end"
+                    alignOffset={0}
+                  >
+                    Use it to create images, cinematics, audio, skyboxes, and UI elements
+                    <Tooltip.Arrow className="fill-[var(--color-bg-inverse,#F3F5F8)]" />
+                  </Tooltip.Content>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            </div>
+          </>
+        )}
       </div>
 
       {showAddForm &&

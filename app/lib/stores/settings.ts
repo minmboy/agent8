@@ -208,14 +208,6 @@ const getDefaultMCPServers = (): MCPServer[] => {
         description: 'Generate sprite sheets for game animations',
       },
       {
-        name: 'Cinematic',
-        url: 'https://mcp-cinematic-svc.verse8.io/mcp',
-        enabled: true,
-        version: MCP_TOOLS_VERSION,
-        v8AuthIntegrated: true,
-        description: 'Turn text into styled game cutscenes',
-      },
-      {
         name: 'Audio',
         url: 'https://mcp-audio-svc.verse8.io/mcp',
         enabled: true,
@@ -224,12 +216,20 @@ const getDefaultMCPServers = (): MCPServer[] => {
         description: 'Generate music and sound effects fast',
       },
       {
+        name: 'Cinematic',
+        url: 'https://mcp-cinematic-svc.verse8.io/mcp',
+        enabled: true,
+        version: MCP_TOOLS_VERSION,
+        v8AuthIntegrated: true,
+        description: 'Turn text into styled game cutscenes',
+      },
+      {
         name: 'Skybox',
         url: 'https://mcp-skybox-svc.verse8.io/mcp',
         enabled: true,
         version: MCP_TOOLS_VERSION,
         v8AuthIntegrated: true,
-        description: 'Make 360° environments for games or VR',
+        description: 'Make 360° environments for games',
       },
       {
         name: 'UI',
@@ -238,6 +238,14 @@ const getDefaultMCPServers = (): MCPServer[] => {
         version: MCP_TOOLS_VERSION,
         v8AuthIntegrated: true,
         description: 'Design CSS styles for game interfaces',
+      },
+      {
+        name: 'Claythis',
+        url: 'https://mcp-claythis-svc.verse8.io/mcp',
+        enabled: true,
+        version: MCP_TOOLS_VERSION,
+        v8AuthIntegrated: true,
+        description: 'Convert 2D images into 3D assets',
       },
       {
         name: 'Crossramp',

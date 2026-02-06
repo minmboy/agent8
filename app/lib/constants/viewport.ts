@@ -21,3 +21,9 @@ export const CHAT_MOBILE_BREAKPOINT = 1072;
  * Breakpoint for header action buttons
  */
 export const HEADER_ACTIONS_BREAKPOINT = 1024;
+
+/**
+ * XL breakpoint (Tailwind xl breakpoint)
+ * Used for compact mode and responsive textarea sizing
+ */
+export const XL_BREAKPOINT = 1280;
