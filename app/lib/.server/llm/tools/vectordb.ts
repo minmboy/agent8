@@ -7,6 +7,8 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('vectordb-tools');
 
+const EMBEDDING_MODEL = 'text-embedding-3-small';
+
 /**
  * Creates tools for searching code examples in the vector database
  * @param env Environment variables containing Supabase credentials
@@ -44,7 +46,7 @@ export async function createSearchCodebase(env: Env): Promise<Record<string, any
           for (const keyword of keywords) {
             try {
               const { embedding } = await embed({
-                model: openai.embedding('text-embedding-ada-002'),
+                model: openai.embedding(EMBEDDING_MODEL),
                 value: keyword,
               });
 
@@ -172,7 +174,7 @@ export async function createSearchResources(env: Env): Promise<Record<string, an
           for (const keyword of keywords) {
             try {
               const { embedding } = await embed({
-                model: openai.embedding('text-embedding-ada-002'),
+                model: openai.embedding(EMBEDDING_MODEL),
                 value: keyword,
               });
 
