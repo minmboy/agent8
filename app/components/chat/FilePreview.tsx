@@ -6,16 +6,17 @@ interface FilePreviewProps {
   attachmentUrlList: string[];
   attachments?: ChatAttachment[];
   onRemove?: (index: number) => void;
+  compact?: boolean; // Compact mode for screens smaller than xl
 }
 
-const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachments, onRemove }) => {
+const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachments, onRemove, compact = false }) => {
   if (!attachmentUrlList || attachmentUrlList.length === 0) {
     return null;
   }
 
-  // 파일 유형 확인 함수
+  // Check file type
   const getFileType = (url: string): 'image' | 'audio' | 'video' | '3d' | 'text' | 'other' | 'uploading' | 'error' => {
-    // 특수 프로토콜 확인
+    // Check special protocols
     if (url.startsWith('uploading://')) {
       return 'uploading';
     }
@@ -26,7 +27,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
 
     const lowerUrl = url.toLowerCase();
 
-    // 이미지 확인
+    // Check image
     if (
       lowerUrl.endsWith('.png') ||
       lowerUrl.endsWith('.jpg') ||
@@ -38,7 +39,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
       return 'image';
     }
 
-    // 오디오 확인
+    // Check audio
     if (
       lowerUrl.endsWith('.mp3') ||
       lowerUrl.endsWith('.wav') ||
@@ -48,17 +49,17 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
       return 'audio';
     }
 
-    // 비디오 확인
+    // Check video
     if (lowerUrl.endsWith('.mp4') || lowerUrl.endsWith('.webm') || lowerUrl.endsWith('.mov')) {
       return 'video';
     }
 
-    // 3D 모델 확인
+    // Check 3D model
     if (lowerUrl.endsWith('.glb') || lowerUrl.endsWith('.gltf') || lowerUrl.endsWith('.vrm')) {
       return '3d';
     }
 
-    // 텍스트 파일 확인
+    // Check text file
     if (
       lowerUrl.endsWith('.txt') ||
       lowerUrl.endsWith('.json') ||
@@ -71,17 +72,17 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
       return 'text';
     }
 
-    // 기타 파일
+    // Other files
     return 'other';
   };
 
-  // 파일명 추출 함수
+  // Extract filename
   const getFileName = (url: string): string => {
     const parts = url.split('/');
-    return parts[parts.length - 1].split('?')[0]; // URL 매개변수 제거
+    return parts[parts.length - 1].split('?')[0]; // Remove URL parameters
   };
 
-  // 파일 확장자 추출 함수
+  // Extract file extension
   const getFileExtension = (url: string): string => {
     const fileName = getFileName(url);
     const parts = fileName.split('.');
@@ -104,12 +105,12 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
         fallback={
           <div className="min-h-[100px] flex flex-col items-center justify-center p-2">
             <div className="i-ph:cube-duotone text-2xl text-bolt-elements-textHighlight"></div>
-            <div className="text-xs text-bolt-elements-textSecondary mt-1 text-center">{fileName} (로딩 중...)</div>
+            <div className="text-xs text-bolt-elements-textSecondary mt-1 text-center">{fileName} (Loading...)</div>
           </div>
         }
       >
         {() => {
-          // 동적으로 ModelViewer 컴포넌트 가져오기
+          // Dynamically import ModelViewer component
           const ModelViewerComponent = () => {
             const [ModelViewer, setModelViewer] = useState<any>(null);
 
@@ -124,7 +125,7 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
                 <div className="min-h-[100px] flex flex-col items-center justify-center p-2">
                   <div className="i-ph:cube-duotone text-2xl text-bolt-elements-textHighlight"></div>
                   <div className="text-xs text-bolt-elements-textSecondary mt-1 text-center">
-                    {fileName} (로딩 중...)
+                    {fileName} (Loading...)
                   </div>
                 </div>
               );
@@ -144,15 +145,16 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
     );
   };
 
-  // 각 파일 유형에 맞는 미리보기 렌더링
+  // Render preview for each file type
   const renderPreview = (url: string, index: number) => {
     const fileType = getFileType(url);
     const fileName = getFileName(url);
     const fileExt = getFileExtension(url);
 
-    // 모든 미리보기 컨테이너에 일관된 크기 적용
-    const containerClass =
-      'mr-2 relative bg-bolt-elements-background-depth-3 rounded overflow-hidden min-w-[120px] min-h-[100px] max-w-[160px]';
+    // Apply consistent size to all preview containers
+    const containerClass = compact
+      ? 'mr-2 relative bg-bolt-elements-background-depth-3 rounded overflow-hidden min-w-[120px] max-h-[84px] max-w-[160px]'
+      : 'mr-2 relative bg-bolt-elements-background-depth-3 rounded overflow-hidden min-w-[120px] min-h-[100px] max-w-[160px]';
 
     return (
       <div key={url} className={containerClass}>
@@ -179,8 +181,15 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
 
           {fileType === 'image' && (
             <div className="flex flex-col items-center justify-center h-full w-full">
-              <img src={url} alt={fileName} className="max-h-20 max-w-full object-contain" loading="lazy" />
-              <div className="text-xs text-bolt-elements-textSecondary mt-2 text-center truncate max-w-[140px]">
+              <img
+                src={url}
+                alt={fileName}
+                className={compact ? 'max-h-[48px] max-w-full object-contain' : 'max-h-20 max-w-full object-contain'}
+                loading="lazy"
+              />
+              <div
+                className={`text-xs text-bolt-elements-textSecondary text-center truncate max-w-[140px] ${compact ? 'mt-1' : 'mt-2'}`}
+              >
                 {fileName}
               </div>
               {(() => {
@@ -259,7 +268,11 @@ const FilePreview: React.FC<FilePreviewProps> = ({ attachmentUrlList, attachment
   };
 
   return (
-    <div className="flex flex-row overflow-x-auto gap-2 py-2">
+    <div
+      className={
+        compact ? 'flex flex-row overflow-x-auto gap-2 py-2 max-h-[100px]' : 'flex flex-row overflow-x-auto gap-2 py-2'
+      }
+    >
       {attachmentUrlList.map((url, index) => renderPreview(url, index))}
     </div>
   );
