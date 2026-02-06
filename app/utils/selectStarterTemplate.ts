@@ -122,15 +122,7 @@ async function getTemplateFileMap(githubRepo: string, path: string, env?: Env): 
   try {
     const files = await getGitHubRepoContent(githubRepo, path, env);
 
-    const fileMap: FileMap = {};
-
-    if (path) {
-      for (const key in files) {
-        fileMap[key.replace(path + '/', '')] = files[key];
-      }
-    }
-
-    return fileMap;
+    return Object.keys(files).length > 0 ? files : undefined;
   } catch (error) {
     console.log('[Template] GitHub fetch failed, using fallback:', path, error);
 
