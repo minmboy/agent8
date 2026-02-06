@@ -685,6 +685,11 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     };
 
     const shouldShowAttachmentTooltip = () => {
+      // Disable tooltip on mobile (only show on desktop hover)
+      if (isSmallViewport) {
+        return false;
+      }
+
       return attachmentHovered && !attachmentDropdownOpen && !importProjectModalOpen;
     };
 
