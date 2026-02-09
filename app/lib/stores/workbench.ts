@@ -1353,14 +1353,14 @@ export class WorkbenchStore {
       if (localStorage.getItem(SETTINGS_KEYS.AGENT8_DEPLOY) === 'false') {
         await this.#runShellCommand(
           shell,
-          `${SHELL_COMMANDS.UPDATE_DEPENDENCIES} && ${SHELL_COMMANDS.START_DEV_SERVER}`,
+          `${SHELL_COMMANDS.UPDATE_DEPENDENCIES} && ${SHELL_COMMANDS.BUILD_SERVER} && ${SHELL_COMMANDS.START_DEV_SERVER}`,
           signal,
         );
         checkAborted();
       } else {
         await this.#runShellCommand(
           shell,
-          `${SHELL_COMMANDS.UPDATE_DEPENDENCIES} && npx -y @agent8/deploy --preview && ${SHELL_COMMANDS.START_DEV_SERVER}`,
+          `${SHELL_COMMANDS.UPDATE_DEPENDENCIES} && ${SHELL_COMMANDS.BUILD_SERVER} && npx -y @agent8/deploy --preview && ${SHELL_COMMANDS.START_DEV_SERVER}`,
           signal,
         );
         checkAborted();
@@ -1437,7 +1437,11 @@ export class WorkbenchStore {
       checkAborted();
 
       // Build project
-      const buildResult = await this.#runShellCommand(shell, `${SHELL_COMMANDS.BUILD_PROJECT} --base ./`, signal);
+      const buildResult = await this.#runShellCommand(
+        shell,
+        `${SHELL_COMMANDS.BUILD_PROJECT} --base ./ && ${SHELL_COMMANDS.BUILD_SERVER}`,
+        signal,
+      );
       checkAborted();
 
       const buildExitCode = buildResult?.exitCode;
@@ -1532,11 +1536,11 @@ export class WorkbenchStore {
     this.#shellCommandQueue = this.#shellCommandQueue.then(async () => {
       checkAborted();
 
-      const result = await shell.executeCommand(Date.now().toString(), command, undefined, { signal });
+      const result = await shell.executeCommand(Date.now().toString(), command, undefined);
 
       checkAborted();
 
-      await shell.waitTillOscCode('prompt', signal);
+      await shell.waitTillOscCode('prompt');
 
       checkAborted();
 
