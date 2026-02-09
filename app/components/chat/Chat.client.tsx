@@ -532,7 +532,9 @@ export const ChatImpl = memo(
 
       const content = extractTextContent(message);
 
-      const isServerUpdated = /<boltAction[^>]*filePath="server.js"[^>]*>/g.test(content);
+      const isServerUpdated =
+        /<boltAction[^>]*filePath="server.js"[^>]*>/g.test(content) ||
+        /<boltAction[^>]*filePath="server\/[^>]*>/g.test(content);
       const isPackageJsonUpdated = /<boltAction[^>]*filePath="package.json"[^>]*>/g.test(content);
 
       const previews = workbench.previews.get();
