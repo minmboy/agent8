@@ -122,6 +122,7 @@ export const SHELL_COMMANDS = {
   UPDATE_DEPENDENCIES: 'bun update',
   START_DEV_SERVER: 'bun run dev',
   BUILD_PROJECT: 'bun run build',
+  BUILD_SERVER: 'npx -y @agent8/gameserver-node build',
 } as const;
 
 export const REACT_THREE_FIBER_PACKAGE_NAME = '@react-three/fiber';
