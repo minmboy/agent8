@@ -11,7 +11,7 @@ import type {
 } from './interfaces';
 import type { ITerminal, IDisposable } from '~/types/terminal';
 import { withResolvers } from '~/utils/promises';
-import { cleanTerminalOutput } from '~/utils/shell';
+import { cleanTerminalOutput, isNonTerminatingCommand } from '~/utils/shell';
 import type {
   BufferEncoding,
   ContainerRequest,
@@ -30,6 +30,8 @@ import { createScopedLogger } from '~/utils/logger';
 import { debounce } from '~/utils/debounce';
 import { WebsocketBuilder, Websocket, RingQueue, ExponentialBackoff } from 'websocket-ts';
 import { toast } from 'react-toastify';
+import { ERROR_NAMES } from '~/utils/constants';
+import { isAbortError, NoneError } from '~/utils/errors';
 
 // Constants for OSC parsing
 const OSC_PATTERNS = {
@@ -44,6 +46,12 @@ const BUFFER_CONFIG = {
   TRUNCATED_GLOBAL_SIZE: 10000,
   MAX_LOCAL_SIZE: 10000,
   TRUNCATED_LOCAL_SIZE: 5000,
+};
+
+// Drain buffer configuration
+const DRAIN_BUFFER_CONFIG = {
+  MAX_TIMEOUT_MS: 500,
+  READ_TIMEOUT_MS: 200,
 };
 
 const STREAM_READ_IDLE_TIMEOUT_MS = 3000;
@@ -133,7 +141,6 @@ class RemoteContainerConnection {
     to: ConnectionState;
     timestamp: number;
   }> = [];
-  private _stateChangeFrequency = new Map<string, number>();
 
   constructor(
     private _serverUrl: string,
@@ -730,7 +737,6 @@ class RemoteContainerConnection {
 
     // Clean up history
     this._stateChangeHistory = [];
-    this._stateChangeFrequency.clear();
   }
 
   private _setupNetworkStateListener(): void {
@@ -1259,8 +1265,20 @@ export class RemoteContainer implements Container {
     };
 
     let isWaitingForOscCode = false;
+    let nonTerminatingProcessRunning = false;
 
-    const waitTillOscCode = async (waitCode: string) => {
+    // Session-level timeout ID for non-terminating process read operations
+    let readSetTimeoutId: NodeJS.Timeout | null = null;
+
+    const waitTillOscCode = async (waitCode: string, signal?: AbortSignal) => {
+      const checkAborted = () => {
+        if (isAbortError(signal)) {
+          throw new DOMException('Wait Till Osc code aborted by user', ERROR_NAMES.ABORT);
+        }
+      };
+
+      checkAborted();
+
       let fullOutput = '';
       let exitCode = 0;
 
@@ -1279,6 +1297,8 @@ export class RemoteContainer implements Container {
        * Do not move this awaiting after existing buffer check, as there may be existing awaiters.
        */
       await waitInternalOutputLock();
+
+      checkAborted();
 
       if (bufferMatches.length > 0) {
         // Found the OSC code in the buffer, extract output up to this code
@@ -1303,6 +1323,7 @@ export class RemoteContainer implements Container {
       const reader = internalOutput.getReader();
       let localBuffer = _globalOutputBuffer; // Start with existing buffer content
       let streamReadTimeoutId: NodeJS.Timeout | null = null;
+      let abortHandler: (() => void) | null = null;
 
       try {
         isWaitingForOscCode = true;
@@ -1311,8 +1332,38 @@ export class RemoteContainer implements Container {
           currentTerminal?.input(':' + '\n');
         }, STREAM_READ_IDLE_TIMEOUT_MS);
 
+        const abortPromise = new Promise<never>((_, reject) => {
+          if (signal) {
+            abortHandler = () => {
+              reject(new DOMException('stream read aborted by user', ERROR_NAMES.ABORT));
+            };
+            signal.addEventListener('abort', abortHandler, { once: true });
+          }
+        });
+
         while (true) {
-          const { value, done } = await reader.read();
+          const readPromise = reader.read();
+          const raceCandidates: Promise<any>[] = [readPromise, abortPromise];
+
+          if (nonTerminatingProcessRunning) {
+            const timeoutPromise = new Promise<{ value: undefined; done: true }>((_, reject) => {
+              readSetTimeoutId = setTimeout(() => {
+                reject(new NoneError('read timeout'));
+              }, STREAM_READ_IDLE_TIMEOUT_MS);
+            });
+            raceCandidates.push(timeoutPromise);
+          }
+
+          checkAborted();
+
+          const { value, done } = await Promise.race(raceCandidates);
+
+          checkAborted();
+
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
 
           if (streamReadTimeoutId) {
             clearTimeout(streamReadTimeoutId);
@@ -1363,10 +1414,28 @@ export class RemoteContainer implements Container {
             localBuffer = localBuffer.slice(lastMatchIndex + lastMatch.length);
           }
         }
+      } catch (error: any) {
+        if (isAbortError(error)) {
+          logger.debug(`AbortError: ${error.message}`);
+        }
+
+        if (error instanceof NoneError) {
+          logger.debug(`NoneError: ${error.message}`);
+        }
       } finally {
+        if (readSetTimeoutId) {
+          clearTimeout(readSetTimeoutId);
+          readSetTimeoutId = null;
+        }
+
         if (streamReadTimeoutId) {
           clearTimeout(streamReadTimeoutId);
           streamReadTimeoutId = null;
+        }
+
+        // Remove abort event listener if it wasn't triggered
+        if (signal && abortHandler) {
+          signal.removeEventListener('abort', abortHandler);
         }
 
         isWaitingForOscCode = false;
@@ -1382,55 +1451,106 @@ export class RemoteContainer implements Container {
       output = streams[0];
       internalOutput = streams[1];
 
+      /**
+       * Drain all data from internal stream buffer until empty
+       * Uses single timeout approach: if no data arrives within 200ms, stream is considered empty
+       * @param maxTimeMs - Maximum time to spend draining
+       */
+      const drainAllBuffer = async (maxTimeMs: number): Promise<void> => {
+        if (!internalOutput || internalOutput.locked) {
+          return;
+        }
+
+        const reader = internalOutput.getReader();
+        const deadline = Date.now() + maxTimeMs;
+
+        try {
+          while (Date.now() < deadline) {
+            const result = await Promise.race([
+              reader.read(),
+              new Promise<ReadableStreamReadResult<string>>((resolve) => {
+                setTimeout(() => resolve({ done: true, value: undefined }), DRAIN_BUFFER_CONFIG.READ_TIMEOUT_MS);
+              }),
+            ]);
+
+            if (result.done || !result.value) {
+              break;
+            }
+          }
+        } catch (error) {
+          logger.error('drainAllBuffer: Error:', error);
+        } finally {
+          reader.releaseLock();
+        }
+      };
+
       // Command execution implementation
       executeCommand = async (command: string): Promise<ExecutionResult> => {
-        const sessionId = v4().slice(0, 8);
+        const commandExecutionId = v4().slice(0, 8);
+        logger.debug(`[${commandExecutionId}] executeCommand: ${command}`);
 
-        logger.debug(`[${sessionId}] executeCommand`, command);
+        // Set non-terminating process flag for timeout handling
+        if (isNonTerminatingCommand(command)) {
+          nonTerminatingProcessRunning = true;
+        } else {
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
 
-        // Use currentTerminal instead of original terminal for input
-        if (!currentTerminal) {
-          throw new Error('No terminal attached to session');
+          nonTerminatingProcessRunning = false;
         }
 
-        /*
-         * Clear global output buffer to avoid confusion with previous command outputs
-         * This ensures we only wait for OSC codes from the current command execution
-         */
-        _globalOutputBuffer = '';
+        try {
+          if (!currentTerminal) {
+            throw new Error('No terminal attached to session');
+          }
 
-        // Interrupt current execution
-        currentTerminal.input('\x03');
+          // Drain all data from internal stream buffer
+          await drainAllBuffer(DRAIN_BUFFER_CONFIG.MAX_TIMEOUT_MS);
 
-        // for dead lock prevention
-        if (isWaitingForOscCode) {
+          /*
+           * Clear global output buffer to avoid confusion with previous command outputs
+           * This ensures we only wait for OSC codes from the current command execution
+           */
+          _globalOutputBuffer = '';
+
+          // Interrupt current execution
+          currentTerminal.input('\x03');
+
+          // Deadlock prevention
+          if (isWaitingForOscCode) {
+            currentTerminal.input(':' + '\n');
+          }
+
+          logger.debug(`[${commandExecutionId}] waiting for prompt`, command);
+
+          // Wait for prompt
+          await waitTillOscCode('prompt');
+
+          // Execute new command
           currentTerminal.input(':' + '\n');
+          await waitTillOscCode('exit');
+          logger.debug('terminal is responsive');
+
+          // Execute the actual command
+          currentTerminal.input(command.trim() + '\n');
+
+          // Wait for execution result
+          const { output, exitCode } = await waitTillOscCode('exit');
+
+          return {
+            output: cleanTerminalOutput(output),
+            exitCode,
+          };
+        } finally {
+          nonTerminatingProcessRunning = false;
+
+          if (readSetTimeoutId) {
+            clearTimeout(readSetTimeoutId);
+            readSetTimeoutId = null;
+          }
         }
-
-        logger.debug(`[${sessionId}] waiting for prompt`, command);
-
-        // Wait for prompt
-        await waitTillOscCode('prompt');
-
-        // Execute new command
-        currentTerminal.input(':' + '\n');
-        await waitTillOscCode('exit');
-        logger.debug('terminal is responsive');
-
-        logger.debug(`[${sessionId}] prompt received`, command);
-
-        currentTerminal.input(command.trim() + '\n');
-        logger.debug(`[${sessionId}] command executed`, command);
-
-        // Wait for execution result
-        const { output, exitCode } = await waitTillOscCode('exit');
-
-        logger.debug(`[${sessionId}] execution ended`, command, exitCode);
-
-        return {
-          output: cleanTerminalOutput(output),
-          exitCode,
-        };
       };
     } else {
       output = process.output;
