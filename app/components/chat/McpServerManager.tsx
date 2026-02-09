@@ -324,7 +324,7 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
       {showServerManager && (
         <motion.div
           ref={dropdownRef}
-          className="flex w-full flex-col items-start rounded-[8px] bg-transparent mb-2 relative z-[999]"
+          className="flex w-full flex-col items-start rounded-[8px] bg-transparent mb-2 relative z-dropdown-elevated"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}

@@ -297,7 +297,7 @@ export const ModelSelector = ({
 
         {isDropdownOpen && (
           <div
-            className="absolute z-[1000] bottom-full mb-1 py-1 min-w-[300px] rounded-lg border border-bolt-elements-borderColor bg-[var(--color-bg-interactive-neutral,#222428)] shadow-lg"
+            className="absolute z-model-selector bottom-full mb-1 py-1 min-w-[300px] rounded-lg border border-bolt-elements-borderColor bg-[var(--color-bg-interactive-neutral,#222428)] shadow-lg"
             role="listbox"
             id="model-listbox"
           >

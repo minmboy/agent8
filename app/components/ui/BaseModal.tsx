@@ -145,7 +145,7 @@ export function BaseModal({ isOpen, isHiddenTitleSection, modalClassName, onClos
 
   return createPortal(
     <div
-      className={classNames('fixed inset-0 z-50', {
+      className={classNames('fixed inset-0 z-modal', {
         'bg-black bg-opacity-50 flex items-center justify-center': !isSmallViewport,
         'bg-[rgba(0,0,0,0.60)] flex items-end': isSmallViewport,
       })}
