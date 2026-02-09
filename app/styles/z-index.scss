@@ -31,3 +31,20 @@ $zIndexMax: 1100;
 .z-max {
   z-index: $zIndexMax;
 }
+
+// Modal and overlay layers (highest priority)
+.z-modal {
+  z-index: $zIndexMax; // 1100 - Modals, dialogs, overlays
+}
+
+.z-chat-input-elevated {
+  z-index: 100; // Elevated chat input (mobile post-chat mode)
+}
+
+.z-dropdown-elevated {
+  z-index: 99; // Elevated dropdowns (MCP dropdown)
+}
+
+.z-model-selector {
+  z-index: 101; // Model selector (above MCP dropdown)
+}

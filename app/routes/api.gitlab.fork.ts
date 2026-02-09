@@ -152,7 +152,7 @@ async function forkAction({ context, request }: ActionFunctionArgs) {
 
     // 5. 파일 목록 생성
     const filesToCommit = Object.entries(extractedFiles)
-      .filter(([_, file]) => file && (file as any).content)
+      .filter(([path, file]) => file && (file as any).content && !path.endsWith('.crossramp'))
       .map(([path, file]) => ({
         path,
         content: metadata?.resetEnv && path.endsWith('.env') ? '' : (file as any).content,
