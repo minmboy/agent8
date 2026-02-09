@@ -300,7 +300,7 @@ export function HeaderGitCloneButton({ asMenuItem = false, onClose }: HeaderGitC
         createPortal(
           <div
             className={classNames(
-              'fixed inset-0 bg-black bg-opacity-50 flex z-50',
+              'fixed inset-0 bg-black bg-opacity-50 flex z-modal',
               isSmallViewport ? 'items-end justify-center' : 'items-center justify-center',
             )}
             onClick={handleCloseModal}
