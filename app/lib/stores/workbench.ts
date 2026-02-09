@@ -1536,11 +1536,11 @@ export class WorkbenchStore {
     this.#shellCommandQueue = this.#shellCommandQueue.then(async () => {
       checkAborted();
 
-      const result = await shell.executeCommand(Date.now().toString(), command, undefined);
+      const result = await shell.executeCommand(Date.now().toString(), command, undefined, { signal });
 
       checkAborted();
 
-      await shell.waitTillOscCode('prompt');
+      await shell.waitTillOscCode('prompt', signal);
 
       checkAborted();
 
