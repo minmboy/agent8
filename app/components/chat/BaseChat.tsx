@@ -975,7 +975,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-8 max-w-[632px] !pl-0 z-[100]':
                       !chatStarted,
                     'z-prompt': chatStarted && (!isSmallViewport || mobilePreviewMode),
-                    'z-[1000]': chatStarted && isSmallViewport && !mobilePreviewMode,
+                    'z-chat-input-elevated': chatStarted && isSmallViewport && !mobilePreviewMode,
                   },
                 )}
               >
@@ -1012,7 +1012,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     [styles.promptInputActive]: chatStarted && !isSmallViewport,
                     [styles.promptInputActiveSmallViewport]: chatStarted && isSmallViewport,
                     'z-prompt': !chatStarted || !isSmallViewport || mobilePreviewMode,
-                    'z-[1000]': chatStarted && isSmallViewport && !mobilePreviewMode,
+                    'z-chat-input-elevated': chatStarted && isSmallViewport && !mobilePreviewMode,
                   })}
                   style={
                     !chatStarted

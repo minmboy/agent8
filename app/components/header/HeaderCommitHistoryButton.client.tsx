@@ -452,7 +452,7 @@ export function HeaderCommitHistoryButton({ asMenuItem = false, onClose }: Heade
       {isOpen &&
         createPortal(
           <div
-            className={`fixed inset-0 flex items-center justify-center z-50 ${isSmallViewport ? 'bg-primary' : 'bg-[rgba(0,0,0,0.60)] backdrop-blur-[4px]'}`}
+            className={`fixed inset-0 flex items-center justify-center z-modal ${isSmallViewport ? 'bg-primary' : 'bg-[rgba(0,0,0,0.60)] backdrop-blur-[4px]'}`}
             onClick={() => setIsOpen(false)}
           >
             <div
