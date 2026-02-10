@@ -41,7 +41,6 @@ export interface VerseData {
   userUid: string;
   userDisplayName: string;
   userHandle: string;
-  userProfilePicture: string;
   isOwner: boolean;
 }
 

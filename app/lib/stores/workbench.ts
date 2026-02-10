@@ -28,7 +28,7 @@ import {
   getLastCommitHash,
   getTags,
 } from '~/lib/persistenceGitbase/api.client';
-import { V8_ACCESS_TOKEN_KEY, verifyV8AccessToken, type V8User } from '~/lib/verse8/userAuth';
+import { DENY_ACTIONS, V8_ACCESS_TOKEN_KEY, verifyV8AccessToken, type V8User } from '~/lib/verse8/userAuth';
 import { generateVerseId } from '~/utils/envUtils';
 import type { BoltShell } from '~/utils/shell';
 import { SETTINGS_KEYS } from './settings';
@@ -1270,18 +1270,17 @@ export class WorkbenchStore {
     const accessToken = localStorage.getItem(V8_ACCESS_TOKEN_KEY);
 
     if (!accessToken) {
-      throw new Error('No access token found');
+      throw new StatusCodeError('No access token found', 401);
     }
 
     checkAborted();
 
     // Verify user
     const user = await verifyV8AccessToken(import.meta.env.VITE_V8_AUTH_API_ENDPOINT, accessToken, signal);
-
     checkAborted();
 
     if (!user.isActivated) {
-      throw new Error('Account is not activated');
+      throw new StatusCodeError('Account is not activated', 403);
     }
 
     checkAborted();

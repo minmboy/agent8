@@ -3,15 +3,16 @@ import { FetchError } from '~/utils/errors';
 
 export const V8_ACCESS_TOKEN_KEY = 'v8AccessToken';
 
+export const DENY_ACTIONS = {
+  PROMPT: 'prompt',
+} as const;
+
 export interface V8User {
   userUid: string;
   isActivated: boolean;
   email: string;
   walletAddress: string;
-  name: string;
-  profilePicture: string | null;
-  userAddress?: string;
-  role?: string;
+  deny: string[];
 }
 
 export const updateV8AccessToken = (v8AccessToken: string) => {
@@ -45,9 +46,6 @@ export const verifyV8AccessToken = async (
     isActivated: data?.isActivated || true,
     email: data?.email || '',
     walletAddress: data?.walletAddress || '',
-    name: data?.name || '',
-    profilePicture: data?.profilePicture || null,
-    userAddress: data?.userAddress || '',
-    role: data?.role || '',
+    deny: Array.isArray(data?.deny) ? data.deny : [],
   };
 };
