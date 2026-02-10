@@ -42,10 +42,10 @@ export const verifyV8AccessToken = async (
   const data = (await response.json()) as Record<string, any>;
 
   return {
-    userUid: data?.userUid || data?.userAddress || '',
-    isActivated: data?.isActivated || true,
-    email: data?.email || '',
-    walletAddress: data?.walletAddress || '',
+    userUid: data?.userUid ?? data?.userAddress,
+    isActivated: data?.isActivated ?? true,
+    email: data?.email ?? '',
+    walletAddress: data?.walletAddress ?? '',
     deny: Array.isArray(data?.deny) ? data.deny : [],
   };
 };

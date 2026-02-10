@@ -28,7 +28,7 @@ import {
   getLastCommitHash,
   getTags,
 } from '~/lib/persistenceGitbase/api.client';
-import { DENY_ACTIONS, V8_ACCESS_TOKEN_KEY, verifyV8AccessToken, type V8User } from '~/lib/verse8/userAuth';
+import { V8_ACCESS_TOKEN_KEY, verifyV8AccessToken, type V8User } from '~/lib/verse8/userAuth';
 import { generateVerseId } from '~/utils/envUtils';
 import type { BoltShell } from '~/utils/shell';
 import { SETTINGS_KEYS } from './settings';
