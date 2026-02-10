@@ -1914,17 +1914,12 @@ export const ChatImpl = memo(
           displayMessage = 'Error:' + (error instanceof Error ? error.message : String(error));
         }
 
-        const errorOptions: HandleChatErrorOptions = {
+        processError(displayMessage, chatRequestStartTimeRef.current, {
           error: errorObj,
           context,
           toastType,
-        };
-
-        if (error instanceof AppError && error.sendChatError !== undefined) {
-          errorOptions.sendChatError = error.sendChatError;
-        }
-
-        processError(displayMessage, chatRequestStartTimeRef.current, errorOptions);
+          sendChatError: error instanceof AppError ? error.sendChatError : undefined,
+        });
       } finally {
         if (sendMessageAbortControllerRef.current === requestController) {
           sendMessageAbortControllerRef.current = null;
