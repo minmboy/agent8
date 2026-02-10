@@ -73,9 +73,9 @@ import { useVersionFeature } from '~/lib/hooks/useVersionFeature';
 import type { WorkbenchStore } from '~/lib/stores/workbench';
 import type { ServerErrorData } from '~/types/stream-events';
 import { getEnvContent } from '~/utils/envUtils';
-import { V8_ACCESS_TOKEN_KEY, verifyV8AccessToken } from '~/lib/verse8/userAuth';
+import { DENY_ACTIONS, V8_ACCESS_TOKEN_KEY, verifyV8AccessToken } from '~/lib/verse8/userAuth';
 import { logManager } from '~/lib/debug/LogManager';
-import { FetchError, getErrorStatus, isAbortError, isNetworkError } from '~/utils/errors';
+import { AppError, FetchError, StatusCodeError, getErrorStatus, isAbortError, isNetworkError } from '~/utils/errors';
 import { getTurnstileHeaders, clearTurnstileTokenCache } from '~/lib/turnstile/client';
 import { isMobileOS } from '~/utils/mobile';
 
@@ -1175,13 +1175,12 @@ export const ChatImpl = memo(
       });
     };
 
-    /**
-     * Initializes the first chat session with template selection and project setup.
-     * This function can be aborted via AbortSignal.
-     */
     const prepareFirstChat = async (
       messageContent: string,
-      currentAttachmentList: ChatAttachment[],
+      attachmentList: ChatAttachment[],
+      userIsActivated: boolean,
+      userWalletAddress: string,
+      accessToken: string,
       signal: AbortSignal,
     ): Promise<void> => {
       const checkAborted = () => {
@@ -1190,14 +1189,6 @@ export const ChatImpl = memo(
         }
       };
 
-      const accessToken = localStorage.getItem(V8_ACCESS_TOKEN_KEY);
-
-      if (!accessToken) {
-        throw new Error('Access token is missing');
-      }
-
-      let userIsActivated = false;
-      let userWalletAddress = null;
       let starterTemplateResp: any;
 
       try {
@@ -1212,14 +1203,6 @@ export const ChatImpl = memo(
           },
         ]);
 
-        checkAborted();
-        addDebugLog('Start:verifyV8AccessToken');
-
-        const user = await verifyV8AccessToken(import.meta.env.VITE_V8_AUTH_API_ENDPOINT, accessToken, signal);
-        userIsActivated = user.isActivated;
-        userWalletAddress = user.walletAddress;
-
-        addDebugLog('Complete:verifyV8AccessToken');
         checkAborted();
 
         addDebugLog('Start:selectStarterTemplate');
@@ -1383,7 +1366,7 @@ export const ChatImpl = memo(
               {
                 type: 'text',
                 text: `[Model: ${firstChatModel.model}]\n\n[Provider: ${firstChatModel.provider.name}]\n\n[Attachments: ${JSON.stringify(
-                  currentAttachmentList,
+                  attachmentList,
                 )}]\n\n${messageContent}\n<think>${starterPrompt}</think>`,
               },
             ],
@@ -1797,9 +1780,37 @@ export const ChatImpl = memo(
           }
         }
 
+        // Get access token from localStorage
+        const accessToken = localStorage.getItem(V8_ACCESS_TOKEN_KEY);
+
+        if (!accessToken) {
+          throw new StatusCodeError('No access token found', 401);
+        }
+
+        addDebugLog('Start:verifyV8AccessToken');
+
+        const user = await verifyV8AccessToken(import.meta.env.VITE_V8_AUTH_API_ENDPOINT, accessToken, signal);
+        addDebugLog('Complete:verifyV8AccessToken');
+        checkAborted();
+
+        if (user.deny.includes(DENY_ACTIONS.PROMPT)) {
+          throw new StatusCodeError(
+            'Your account is currently restricted. Connect your Google account to continue.',
+            403,
+            { sendChatError: false },
+          );
+        }
+
         if (wasFirstChat) {
           addDebugLog('Start:prepareFirstChat');
-          await prepareFirstChat(messageContent, attachmentList, signal);
+          await prepareFirstChat(
+            messageContent,
+            attachmentList,
+            user.isActivated,
+            user.walletAddress,
+            accessToken,
+            signal,
+          );
           addDebugLog('Complete:prepareFirstChat');
 
           return;
@@ -1909,6 +1920,7 @@ export const ChatImpl = memo(
           error: errorObj,
           context,
           toastType,
+          sendChatError: error instanceof AppError ? error.sendChatError : undefined,
         });
       } finally {
         if (sendMessageAbortControllerRef.current === requestController) {
