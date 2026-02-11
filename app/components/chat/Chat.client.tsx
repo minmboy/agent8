@@ -42,6 +42,7 @@ import type { ProviderInfo } from '~/types/model';
 import { useSearchParams } from '@remix-run/react';
 import { createSampler } from '~/utils/sampler';
 import { selectStarterTemplate, getZipTemplates } from '~/utils/selectStarterTemplate';
+import { stripTopLevelDirectory } from '~/utils/zipUtils';
 import { logStore } from '~/lib/stores/logs';
 import { MESSAGE_ANNOTATIONS } from '~/utils/constants';
 import { streamingState, shouldPlaySoundOnPreviewReady } from '~/lib/stores/streaming';
@@ -51,6 +52,7 @@ import type { Template } from '~/types/template';
 import { playCompletionSound } from '~/utils/sound';
 import {
   commitChanges,
+  commitFiles,
   fetchProjectFiles,
   forkProject,
   getCommit,
@@ -2019,79 +2021,6 @@ export const ChatImpl = memo(
       Cookies.set('SelectedProvider', newProvider.name, { expires: 1 });
     };
 
-    const handleTemplateImport = async (source: { type: 'github' | 'zip'; title: string }, files: FileMap) => {
-      const startTime = performance.now();
-
-      try {
-        setFakeLoading(true);
-        runAnimation();
-
-        const containerInstance = await workbench.container;
-        await containerInstance.mount(convertFileMapToFileSystemTree(files));
-
-        if (!chatStarted) {
-          repoStore.set({
-            name: source.title,
-            path: '',
-            title: source.title,
-            latestCommitHash: '',
-            createdAt: '',
-          });
-
-          // GitLab persistence가 비활성화된 경우에만 즉시 URL 변경
-          if (!isEnabledGitbasePersistence) {
-            changeChatUrl(source.title, { replace: true });
-          }
-
-          const messages = [
-            {
-              id: `1-${new Date().getTime()}`,
-              role: 'user',
-              parts: [
-                {
-                  type: 'text',
-                  text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n[Attachments: ${JSON.stringify(
-                    attachmentList,
-                  )}]\n\nI want to import the following files from the ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`,
-                },
-              ],
-            },
-            {
-              id: `2-${new Date().getTime()}`,
-              role: 'assistant',
-              parts: [
-                {
-                  type: 'text',
-                  text: `I will import the files from the ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`,
-                },
-              ],
-            },
-          ] as UIMessage[];
-
-          setInitialMessages(messages);
-
-          setChatStarted(true);
-          workbench.showWorkbench.set(true);
-          sendEventToParent('EVENT', { name: 'START_EDITING' });
-        }
-
-        toast.success(`Successfully imported ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`);
-      } catch (error) {
-        processError(`Failed to import ${source.type === 'github' ? 'repository' : 'project'}`, startTime, {
-          error: error instanceof Error ? error : String(error),
-          context: 'handleTemplateImport',
-          prompt: undefined, // Prompt not required (not a chat request)
-        });
-      } finally {
-        setFakeLoading(false);
-      }
-    };
-
-    const handleProjectZipImport = async (title: string, zipFile: File) => {
-      const { fileMap } = await getZipTemplates(zipFile, title);
-      await handleTemplateImport({ type: 'zip', title }, fileMap);
-    };
-
     const handleFork = async (message: UIMessage) => {
       const startTime = performance.now();
       const repo = repoStore.get();
@@ -2146,6 +2075,87 @@ export const ChatImpl = memo(
         });
 
         return;
+      }
+    };
+
+    const handleProjectZipImport = async (title: string, zipFile: File) => {
+      const startTime = performance.now();
+
+      // Persist files to gitbase and update workbench state
+      const persistToGitbase = async (fileMap: FileMap, isNewProject: boolean): Promise<void> => {
+        const currentFiles = workbench.files.get();
+        const normalizedFileMap = stripTopLevelDirectory(fileMap);
+
+        workbench.files.set({ ...currentFiles, ...normalizedFileMap });
+        await commitFiles(normalizedFileMap, `Import project: ${title}`, isNewProject);
+
+        logger.info('project imported successfully');
+      };
+
+      // Update chat UI state based on project status
+      const updateChatState = (commitMessage: UIMessage, isNewProject: boolean): void => {
+        if (isNewProject) {
+          setInitialMessages([commitMessage]);
+          setChatStarted(true);
+          workbench.showWorkbench.set(true);
+          sendEventToParent('EVENT', { name: 'START_EDITING' });
+        } else {
+          setMessages((prev) => [...prev, commitMessage]);
+        }
+      };
+
+      try {
+        // Extract and mount files
+        const { fileMap } = await getZipTemplates(zipFile, title);
+
+        setFakeLoading(true);
+        runAnimation();
+
+        const containerInstance = await workbench.container;
+        await containerInstance.mount(convertFileMapToFileSystemTree(fileMap));
+
+        // Initialize repository for new projects
+        const isNewProject = !chatStarted;
+
+        if (isNewProject) {
+          repoStore.set({
+            name: title,
+            path: '',
+            title,
+            latestCommitHash: '',
+            createdAt: '',
+          });
+        }
+
+        // Create commit message
+        const commitMessage: UIMessage = {
+          id: `1-${new Date().getTime()}`,
+          role: 'assistant',
+          parts: [{ type: 'text', text: `Import project: ${title}` }],
+        };
+
+        // Persist to storage
+        if (isEnabledGitbasePersistence) {
+          await persistToGitbase(fileMap, isNewProject);
+        } else {
+          changeChatUrl(title, { replace: true });
+        }
+
+        // Update UI and show success notification
+        updateChatState(commitMessage, isNewProject);
+
+        const successMessage = `Successfully imported ${isEnabledGitbasePersistence ? 'and published ' : ''}project: ${title}`;
+        toast.success(successMessage);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to import project: ${errorMessage}`);
+        processError(`Failed to import project: ${errorMessage}`, startTime, {
+          error: error instanceof Error ? error : String(error),
+          context: 'handleProjectZipImport',
+          prompt: undefined,
+        });
+      } finally {
+        setFakeLoading(false);
       }
     };
 

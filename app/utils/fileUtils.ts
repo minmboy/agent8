@@ -6,22 +6,22 @@ import { fileTypeFromBuffer } from 'file-type';
 import { getEncoding } from 'istextorbinary';
 import { Buffer } from 'buffer';
 
-// Common patterns to ignore, similar to .gitignore
 export const IGNORE_PATTERNS = [
-  'node_modules/**',
-  '.git/**',
-  'dist/**',
-  'build/**',
-  '.next/**',
-  'coverage/**',
-  '.cache/**',
-  '.vscode/**',
-  '.idea/**',
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/.next/**',
+  '**/coverage/**',
+  '**/.cache/**',
+  '**/.vscode/**',
+  '**/.idea/**',
+  '**/__MACOSX/**',
   '**/*.log',
   '**/.DS_Store',
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',
+  '**/dist/**',
+  '**/build/**',
 ];
 
 export const MAX_FILES = 1000;

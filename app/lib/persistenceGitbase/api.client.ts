@@ -14,6 +14,7 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('persistenceGitbase');
 const MAX_ASSISTANT_MESSAGE_SIZE = 20 * 1024; // 20KB for assistant message content
+const MAX_REQUEST_BODY_SIZE = 100 * 1024 * 1024; // 100MB (Cloudflare request body limit)
 
 const truncateMessage = (message: string, maxSize: number): string => {
   if (message.length <= maxSize) {
@@ -24,6 +25,11 @@ const truncateMessage = (message: string, maxSize: number): string => {
   logger.warn(`Assistant message truncated from ${message.length} to ${truncated.length} bytes (max: ${maxSize})`);
 
   return truncated;
+};
+
+const validateRequestBodySize = (requestBody: object): boolean => {
+  const bodySize = new Blob([JSON.stringify(requestBody)]).size;
+  return bodySize <= MAX_REQUEST_BODY_SIZE;
 };
 
 export const isEnabledGitbasePersistence =
@@ -161,8 +167,7 @@ ${truncateMessage(
 )}
 </V8AssistantMessage>`;
 
-  // API 호출하여 변경사항 커밋
-  const response = await axios.post('/api/gitlab/commits', {
+  const requestBody = {
     projectName,
     isFirstCommit,
     description: title,
@@ -171,7 +176,17 @@ ${truncateMessage(
     commitMessage,
     baseCommit: revertTo,
     branch: 'develop',
-  });
+  };
+
+  // Check request body size before posting
+  if (!validateRequestBodySize(requestBody)) {
+    throw new Error(
+      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
+    );
+  }
+
+  // API 호출하여 변경사항 커밋
+  const response = await axios.post('/api/gitlab/commits', requestBody);
 
   const result = response.data;
 
@@ -222,19 +237,24 @@ export const commitUserChanged = async (signal?: AbortSignal) => {
       content: (file as any).content,
     }));
 
-  const response = await axios.post(
-    '/api/gitlab/commits',
-    {
-      projectName,
-      isFirstCommit: false,
-      description: title,
-      files,
-      commitMessage: `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`,
-      baseCommit: revertTo,
-      branch: 'develop',
-    },
-    { signal },
-  );
+  const requestBody = {
+    projectName,
+    isFirstCommit: false,
+    description: title,
+    files,
+    commitMessage: `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`,
+    baseCommit: revertTo,
+    branch: 'develop',
+  };
+
+  // Check request body size before posting
+  if (!validateRequestBodySize(requestBody)) {
+    throw new Error(
+      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
+    );
+  }
+
+  const response = await axios.post('/api/gitlab/commits', requestBody, { signal });
 
   const result = response.data;
 
@@ -247,6 +267,79 @@ export const commitUserChanged = async (signal?: AbortSignal) => {
 
   if (revertTo) {
     changeChatUrl(location.pathname, { replace: true, searchParams: { revertTo: result.data.commitHash } });
+  }
+
+  return result;
+};
+
+/**
+ * Commit a file map directly
+ * @param fileMap - Map of files to commit
+ * @param commitMessage - Commit message
+ * @param isFirstCommit - Whether this is the first commit
+ */
+export const commitFiles = async (fileMap: FileMap, commitMessage: string, isFirstCommit: boolean) => {
+  const projectName = repoStore.get().name;
+  const title = repoStore.get().title;
+
+  logger.info(`Starting commit process (commitFiles) - Project: ${projectName}, isFirstCommit: ${isFirstCommit}`);
+
+  // Get revertTo from URL query parameters
+  const url = new URL(window.location.href);
+  const revertToParam = url.searchParams.get('revertTo');
+  const revertTo = revertToParam && isCommitHash(revertToParam) ? revertToParam : null;
+
+  // Convert fileMap to files array
+  const files = Object.entries(fileMap)
+    .filter(([_, file]) => file && (file as any).content)
+    .map(([path, file]) => ({
+      path: path.replace(WORK_DIR + '/', ''),
+      content: (file as any).content,
+    }));
+
+  const requestBody = {
+    projectName,
+    isFirstCommit,
+    description: title,
+    files,
+    deletedFiles: [],
+    commitMessage,
+    baseCommit: revertTo,
+    branch: 'develop',
+  };
+
+  // Check request body size before posting
+  if (!validateRequestBodySize(requestBody)) {
+    throw new Error(
+      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
+    );
+  }
+
+  // Call API to commit changes
+  const response = await axios.post('/api/gitlab/commits', requestBody);
+
+  const result = response.data;
+
+  if (!result.data.commitHash) {
+    throw new Error('The code commit has failed.');
+  }
+
+  if (isFirstCommit) {
+    repoStore.set({
+      name: result.data.project.name,
+      path: result.data.project.path,
+      title: result.data.project.description.split('\n')[0] || result.data.project.name,
+      latestCommitHash: result.data.commitHash,
+      createdAt: result.data.project.created_at || '',
+    });
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
+  } else {
+    // Update latestCommitHash for subsequent commits
+    repoStore.setKey('latestCommitHash', result.data.commitHash);
+  }
+
+  if (revertTo) {
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
   }
 
   return result;
