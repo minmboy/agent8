@@ -920,8 +920,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div
               className={classNames(`pt-0 pt-4 relative`, {
                 'h-full flex flex-col': chatStarted,
-                'pb-[200px] md:pb-[100px]': !chatStarted,
-                'pb-[330px] md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
+                'md:pb-[100px]': !chatStarted,
+                'md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
               })}
             >
               <ClientOnly>
@@ -972,7 +972,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     'sticky bottom-0': chatStarted && isSmallViewport,
                     'pl-6': !isSmallViewport,
                     'tablet:max-w-chat': chatStarted,
-                    'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-8 max-w-[632px] !pl-0 z-[100]':
+                    'max-w-[632px] !pl-0 md:max-w-[632px] md:left-1/2 md:translate-x-[-50%] md:absolute md:bottom-8 z-[100]':
                       !chatStarted,
                     'z-prompt': chatStarted && (!isSmallViewport || mobilePreviewMode),
                     'z-chat-input-elevated': chatStarted && isSmallViewport && !mobilePreviewMode,
