@@ -62,8 +62,7 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
               };
             }
           } catch (error) {
-            console.error(`Error extracting file ${filename}:`, error);
-            return null;
+            throw error;
           }
         }),
       );
