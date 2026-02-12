@@ -14,7 +14,7 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('persistenceGitbase');
 const MAX_ASSISTANT_MESSAGE_SIZE = 20 * 1024; // 20KB for assistant message content
-const MAX_REQUEST_BODY_SIZE = 100 * 1024 * 1024; // 100MB (Cloudflare request body limit)
+const MAX_REQUEST_BODY_SIZE = 100; // 100MB (Cloudflare request body limit) in MB
 
 const truncateMessage = (message: string, maxSize: number): string => {
   if (message.length <= maxSize) {
@@ -29,7 +29,95 @@ const truncateMessage = (message: string, maxSize: number): string => {
 
 const validateRequestBodySize = (requestBody: object): boolean => {
   const bodySize = new Blob([JSON.stringify(requestBody)]).size;
-  return bodySize <= MAX_REQUEST_BODY_SIZE;
+  return bodySize <= MAX_REQUEST_BODY_SIZE * 1024 * 1024;
+};
+
+/**
+ * Common commit options interface
+ */
+interface CommitOptions {
+  projectName: string;
+  title: string;
+  isFirstCommit: boolean;
+  commitMessage: string;
+  files: Array<{ path: string; content: string }>;
+  deletedFiles?: string[];
+  revertTo?: string | null;
+  signal?: AbortSignal;
+  callback?: (commitHash: string) => void;
+}
+
+/**
+ * Update repository store after commit
+ */
+const updateRepoStore = (result: any, isFirstCommit: boolean, revertTo: string | null | undefined) => {
+  if (isFirstCommit) {
+    repoStore.set({
+      name: result.data.project.name,
+      path: result.data.project.path,
+      title: result.data.project.description.split('\n')[0] || result.data.project.name,
+      latestCommitHash: result.data.commitHash,
+      createdAt: result.data.project.created_at || '',
+    });
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
+  } else {
+    repoStore.setKey('latestCommitHash', result.data.commitHash);
+  }
+
+  if (revertTo) {
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
+  }
+};
+
+/**
+ * Core commit function used by commitChanges, commitUserChanged, and commitFiles
+ * Handles request validation, API call, and repository state updates
+ */
+const performCommit = async (options: CommitOptions) => {
+  const {
+    projectName,
+    title,
+    isFirstCommit,
+    commitMessage,
+    files,
+    deletedFiles = [],
+    revertTo,
+    signal,
+    callback,
+  } = options;
+
+  const requestBody = {
+    projectName,
+    isFirstCommit,
+    description: title,
+    files,
+    deletedFiles,
+    commitMessage,
+    baseCommit: revertTo,
+    branch: 'develop',
+  };
+
+  // Validate request body size before posting
+  if (!validateRequestBodySize(requestBody)) {
+    throw new Error(`Maximum request size is ${MAX_REQUEST_BODY_SIZE}MB. Please reduce the file size.`);
+  }
+
+  // Call API to commit changes
+  const response = await axios.post('/api/gitlab/commits', requestBody, signal ? { signal } : undefined);
+
+  const result = response.data;
+
+  if (!result.data.commitHash) {
+    throw new Error('The code commit has failed.');
+  }
+
+  // Update repository store
+  updateRepoStore(result, isFirstCommit, revertTo);
+
+  // Execute callback if provided
+  callback?.(result.data.commitHash);
+
+  return result;
 };
 
 export const isEnabledGitbasePersistence =
@@ -167,54 +255,17 @@ ${truncateMessage(
 )}
 </V8AssistantMessage>`;
 
-  const requestBody = {
+  // Use performCommit for common commit logic
+  return performCommit({
     projectName,
+    title,
     isFirstCommit,
-    description: title,
+    commitMessage,
     files,
     deletedFiles,
-    commitMessage,
-    baseCommit: revertTo,
-    branch: 'develop',
-  };
-
-  // Check request body size before posting
-  if (!validateRequestBodySize(requestBody)) {
-    throw new Error(
-      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
-    );
-  }
-
-  // API 호출하여 변경사항 커밋
-  const response = await axios.post('/api/gitlab/commits', requestBody);
-
-  const result = response.data;
-
-  if (!result.data.commitHash) {
-    throw new Error('The code commit has failed.');
-  }
-
-  if (isFirstCommit) {
-    repoStore.set({
-      name: result.data.project.name,
-      path: result.data.project.path,
-      title: result.data.project.description.split('\n')[0] || result.data.project.name,
-      latestCommitHash: result.data.commitHash,
-      createdAt: result.data.project.created_at || '',
-    });
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  } else {
-    // Update latestCommitHash for subsequent commits
-    repoStore.setKey('latestCommitHash', result.data.commitHash);
-  }
-
-  if (revertTo) {
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  }
-
-  callback?.(result.data.commitHash);
-
-  return result;
+    revertTo,
+    callback,
+  });
 };
 
 export const commitUserChanged = async (signal?: AbortSignal) => {
@@ -237,39 +288,35 @@ export const commitUserChanged = async (signal?: AbortSignal) => {
       content: (file as any).content,
     }));
 
-  const requestBody = {
-    projectName,
-    isFirstCommit: false,
-    description: title,
-    files,
-    commitMessage: `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`,
-    baseCommit: revertTo,
-    branch: 'develop',
-  };
+  const commitMessage = `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`;
 
-  // Check request body size before posting
-  if (!validateRequestBodySize(requestBody)) {
-    throw new Error(
-      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
-    );
+  // Use performCommit for common commit logic
+  try {
+    const result = await performCommit({
+      projectName,
+      title,
+      isFirstCommit: false,
+      commitMessage,
+      files,
+      deletedFiles: [],
+      revertTo,
+      signal,
+    });
+
+    // Special handling for revertTo in commitUserChanged
+    if (revertTo) {
+      changeChatUrl(location.pathname, { replace: true, searchParams: { revertTo: result.data.commitHash } });
+    }
+
+    return result;
+  } catch (error) {
+    // Override error message for user changes
+    if (error instanceof Error && error.message === 'The code commit has failed.') {
+      throw new Error('The user changed files commit has failed.');
+    }
+
+    throw error;
   }
-
-  const response = await axios.post('/api/gitlab/commits', requestBody, { signal });
-
-  const result = response.data;
-
-  if (!result.data.commitHash) {
-    throw new Error('The user changed files commit has failed.');
-  }
-
-  // Update latestCommitHash
-  repoStore.setKey('latestCommitHash', result.data.commitHash);
-
-  if (revertTo) {
-    changeChatUrl(location.pathname, { replace: true, searchParams: { revertTo: result.data.commitHash } });
-  }
-
-  return result;
 };
 
 /**
@@ -297,52 +344,16 @@ export const commitFiles = async (fileMap: FileMap, commitMessage: string, isFir
       content: (file as any).content,
     }));
 
-  const requestBody = {
+  // Use performCommit for common commit logic
+  return performCommit({
     projectName,
+    title,
     isFirstCommit,
-    description: title,
+    commitMessage,
     files,
     deletedFiles: [],
-    commitMessage,
-    baseCommit: revertTo,
-    branch: 'develop',
-  };
-
-  // Check request body size before posting
-  if (!validateRequestBodySize(requestBody)) {
-    throw new Error(
-      `Changes too large. Maximum request size is ${(MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0)}MB. Please save fewer files.`,
-    );
-  }
-
-  // Call API to commit changes
-  const response = await axios.post('/api/gitlab/commits', requestBody);
-
-  const result = response.data;
-
-  if (!result.data.commitHash) {
-    throw new Error('The code commit has failed.');
-  }
-
-  if (isFirstCommit) {
-    repoStore.set({
-      name: result.data.project.name,
-      path: result.data.project.path,
-      title: result.data.project.description.split('\n')[0] || result.data.project.name,
-      latestCommitHash: result.data.commitHash,
-      createdAt: result.data.project.created_at || '',
-    });
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  } else {
-    // Update latestCommitHash for subsequent commits
-    repoStore.setKey('latestCommitHash', result.data.commitHash);
-  }
-
-  if (revertTo) {
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  }
-
-  return result;
+    revertTo,
+  });
 };
 
 export const downloadProjectZip = async (projectPath: string, commitSha?: string) => {

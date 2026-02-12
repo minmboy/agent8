@@ -59,43 +59,39 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
   }
 }
 
-/**
- * Remove the top-level directory from FileMap if there is only one
- * Normalize in advance for consistency, as mount performs the same processing
- */
 export function stripTopLevelDirectory(fileMap: FileMap): FileMap {
-  const topLevelDirs = new Set<string>();
   const allPaths = Object.keys(fileMap);
 
-  // Collect top-level directories
-  allPaths.forEach((path) => {
-    const firstSlash = path.indexOf('/');
+  // Extract top level entries (directories or files)
+  const topLevelEntries = new Set<string>();
 
-    if (firstSlash > 0) {
-      topLevelDirs.add(path.substring(0, firstSlash));
-    } else {
-      // Do not remove if there is a file at the top level
-      topLevelDirs.add('__root__');
+  for (const path of allPaths) {
+    const firstSlashIndex = path.indexOf('/');
+
+    if (firstSlashIndex === -1) {
+      // If top level file exists, do not remove it
+      return fileMap;
     }
-  });
 
-  // Remove if there is only one top-level directory
-  if (topLevelDirs.size === 1 && !topLevelDirs.has('__root__')) {
-    const topLevelDir = Array.from(topLevelDirs)[0];
-    const normalizedFileMap: FileMap = {};
-
-    Object.entries(fileMap).forEach(([path, fileData]) => {
-      if (path.startsWith(topLevelDir + '/')) {
-        const normalizedPath = path.substring(topLevelDir.length + 1);
-        normalizedFileMap[normalizedPath] = fileData;
-      } else {
-        // Exception case: keep paths that do not match the top-level directory as is
-        normalizedFileMap[path] = fileData;
-      }
-    });
-
-    return normalizedFileMap;
+    topLevelEntries.add(path.substring(0, firstSlashIndex));
   }
 
-  return fileMap;
+  // If not a single top level directory, return original
+  if (topLevelEntries.size !== 1) {
+    return fileMap;
+  }
+
+  // Remove single top level directory
+  const wrapperDir = Array.from(topLevelEntries)[0];
+  const wrapperPrefix = `${wrapperDir}/`;
+  const normalizedFileMap: FileMap = {};
+
+  for (const [path, fileData] of Object.entries(fileMap)) {
+    if (path.startsWith(wrapperPrefix)) {
+      const normalizedPath = path.substring(wrapperPrefix.length);
+      normalizedFileMap[normalizedPath] = fileData;
+    }
+  }
+
+  return normalizedFileMap;
 }

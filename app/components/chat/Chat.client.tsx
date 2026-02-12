@@ -433,7 +433,6 @@ export const ChatImpl = memo(
     loading,
     description,
     initialMessages,
-    setInitialMessages,
     revertTo,
     hasMore,
     loadBefore,
@@ -2081,42 +2080,25 @@ export const ChatImpl = memo(
     const handleProjectZipImport = async (title: string, zipFile: File) => {
       const startTime = performance.now();
 
-      // Persist files to gitbase and update workbench state
-      const persistToGitbase = async (fileMap: FileMap, isNewProject: boolean): Promise<void> => {
-        const currentFiles = workbench.files.get();
-        const normalizedFileMap = stripTopLevelDirectory(fileMap);
-
-        workbench.files.set({ ...currentFiles, ...normalizedFileMap });
-        await commitFiles(normalizedFileMap, `Import project: ${title}`, isNewProject);
-
-        logger.info('project imported successfully');
-      };
-
-      // Update chat UI state based on project status
-      const updateChatState = (commitMessage: UIMessage, isNewProject: boolean): void => {
-        if (isNewProject) {
-          setInitialMessages([commitMessage]);
-          setChatStarted(true);
-          workbench.showWorkbench.set(true);
-          sendEventToParent('EVENT', { name: 'START_EDITING' });
-        } else {
-          setMessages((prev) => [...prev, commitMessage]);
-        }
-      };
-
       try {
-        // Extract and mount files
+        // Extract and mount files to container
         const { fileMap } = await getZipTemplates(zipFile, title);
 
         setFakeLoading(true);
         runAnimation();
 
         const containerInstance = await workbench.container;
-        await containerInstance.mount(convertFileMapToFileSystemTree(fileMap));
 
-        // Initialize repository for new projects
+        /*
+         * ZIP 파일의 불필요한 래퍼 디렉토리 제거 (예: my-project/ → 루트)
+         * convertFileMapToFileSystemTree는 WORK_DIR 제거만 하므로 여기서 먼저 정규화 필요
+         */
+        const normalizedFileMap = stripTopLevelDirectory(fileMap);
+        await containerInstance.mount(convertFileMapToFileSystemTree(normalizedFileMap));
+
         const isNewProject = !chatStarted;
 
+        // Initialize repository for new projects
         if (isNewProject) {
           repoStore.set({
             name: title,
@@ -2127,25 +2109,55 @@ export const ChatImpl = memo(
           });
         }
 
-        // Create commit message
-        const commitMessage: UIMessage = {
-          id: `1-${new Date().getTime()}`,
-          role: 'assistant',
-          parts: [{ type: 'text', text: `Import project: ${title}` }],
-        };
+        const commitMessage = `Import project: ${title}`;
+        let toastMessage = '';
+        let isCommitFailed = false;
 
         // Persist to storage
         if (isEnabledGitbasePersistence) {
-          await persistToGitbase(fileMap, isNewProject);
+          try {
+            const currentFiles = workbench.files.get();
+            workbench.files.set({ ...currentFiles, ...normalizedFileMap });
+
+            await commitFiles(normalizedFileMap, commitMessage, isNewProject);
+            toastMessage = `Successfully imported project: ${title}`;
+          } catch (error) {
+            // Continue local work even if commit fails
+            isCommitFailed = true;
+
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error(`Commit failed: ${errorMessage}`);
+            toastMessage = `Failed to import project: ${errorMessage}`;
+            changeChatUrl(title, { replace: true });
+          }
         } else {
           changeChatUrl(title, { replace: true });
         }
 
-        // Update UI and show success notification
-        updateChatState(commitMessage, isNewProject);
+        // Update UI
+        if (isNewProject) {
+          setChatStarted(true);
+          workbench.showWorkbench.set(true);
+          sendEventToParent('EVENT', { name: 'START_EDITING' });
+        } else {
+          const assistantMessage: UIMessage = {
+            id: `1-${new Date().getTime()}`,
+            role: 'assistant',
+            parts: [
+              {
+                type: 'text',
+                text: commitMessage,
+              },
+            ],
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
 
-        const successMessage = `Successfully imported ${isEnabledGitbasePersistence ? 'and published ' : ''}project: ${title}`;
-        toast.success(successMessage);
+        if (isCommitFailed) {
+          toast.warning(toastMessage);
+        } else {
+          toast.success(toastMessage);
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error(`Failed to import project: ${errorMessage}`);
