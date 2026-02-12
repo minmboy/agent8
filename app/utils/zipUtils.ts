@@ -60,38 +60,41 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
 }
 
 export function stripTopLevelDirectory(fileMap: FileMap): FileMap {
-  const allPaths = Object.keys(fileMap);
+  const paths = Object.keys(fileMap);
 
-  if (allPaths.length === 0) {
+  if (paths.length === 0) {
     return fileMap;
   }
 
-  // Extract top level entries (directories or files)
   const topLevelEntries = new Set<string>();
+  const pathData: Array<[string, string, any]> = []; // [path, topFolder, fileData]
 
-  for (const path of allPaths) {
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
     const firstSlashIndex = path.indexOf('/');
 
     if (firstSlashIndex === -1) {
-      // If top level file exists, do not remove it
+      // If top-level file exists, do not remove it
       return fileMap;
     }
 
-    topLevelEntries.add(path.substring(0, firstSlashIndex));
+    const topFolder = path.substring(0, firstSlashIndex);
+    topLevelEntries.add(topFolder);
+    pathData.push([path, topFolder, fileData]);
   }
 
-  // If not a single top level directory, return original
+  // If not a single top-level directory, return original
   if (topLevelEntries.size !== 1) {
     return fileMap;
   }
 
-  // Remove single top level directory
+  // Remove single top-level directory (reuse collected data)
   const wrapperDir = Array.from(topLevelEntries)[0];
   const wrapperPrefix = `${wrapperDir}/`;
   const normalizedFileMap: FileMap = {};
 
-  for (const [path, fileData] of Object.entries(fileMap)) {
-    if (path.startsWith(wrapperPrefix)) {
+  for (const [path, topFolder, fileData] of pathData) {
+    if (topFolder === wrapperDir) {
       const normalizedPath = path.substring(wrapperPrefix.length);
       normalizedFileMap[normalizedPath] = fileData;
     }
