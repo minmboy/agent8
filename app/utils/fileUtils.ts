@@ -6,6 +6,15 @@ import { fileTypeFromBuffer } from 'file-type';
 import { getEncoding } from 'istextorbinary';
 import { Buffer } from 'buffer';
 
+export type SizeUnit = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
+
+const UNIT_POW: Record<Exclude<SizeUnit, 'B'>, number> = {
+  KB: 1,
+  MB: 2,
+  GB: 3,
+  TB: 4,
+};
+
 export const IGNORE_PATTERNS = [
   '**/node_modules/**',
   '**/.git/**',
@@ -741,9 +750,9 @@ export function getFileContents(fileMap: FileMap, path: string): string | null {
 /**
  * Calculate total size of FileMap in MB
  * @param fileMap FileMap to calculate size for
- * @returns Total size in MB
+ * @returns Total size in bytes
  */
-export function getFileMapSize(fileMap: FileMap): number {
+export function getFileMapSizeBytes(fileMap: FileMap): number {
   let totalSizeBytes = 0;
 
   for (const path in fileMap) {
@@ -760,8 +769,37 @@ export function getFileMapSize(fileMap: FileMap): number {
     }
   }
 
-  // Convert bytes to MB
-  return totalSizeBytes / (1024 * 1024);
+  return totalSizeBytes;
+}
+
+/**
+ * Get total size of FileMap in specified unit
+ * @param fileMap FileMap to calculate size for
+ * @param unit Unit to convert to (default: 'B')
+ * @param base Base to use for conversion (default: 1024)
+ * @returns Total size in specified unit
+ */
+export function getFileMapSize(fileMap: FileMap, unit: SizeUnit = 'B', base: 1000 | 1024 = 1024): number {
+  return bytesToUnit(getFileMapSizeBytes(fileMap), unit, base);
+}
+
+/**
+ * Convert bytes to specified unit
+ * @param bytes Bytes to convert
+ * @param unit Unit to convert to
+ * @param base Base to use for conversion (default: 1024)
+ * @returns Converted size in specified unit
+ */
+export function bytesToUnit(bytes: number, unit: SizeUnit, base: 1000 | 1024 = 1024): number {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return 0;
+  }
+
+  if (unit === 'B') {
+    return bytes;
+  }
+
+  return bytes / Math.pow(base, UNIT_POW[unit]);
 }
 
 /**

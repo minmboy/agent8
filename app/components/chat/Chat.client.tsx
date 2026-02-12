@@ -2086,7 +2086,7 @@ export const ChatImpl = memo(
         const { fileMap } = await getZipTemplates(zipFile, title);
 
         // Validate extracted file size
-        if (getFileMapSize(fileMap) >= MAX_PROJECT_SIZE_MB) {
+        if (getFileMapSize(fileMap, 'MB') >= MAX_PROJECT_SIZE_MB) {
           throw new AppError(`Project size exceeds ${MAX_PROJECT_SIZE_MB}MB limit. Please reduce the file size.`, {
             sendChatError: false,
           });
