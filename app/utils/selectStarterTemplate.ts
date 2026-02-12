@@ -162,20 +162,8 @@ function generateTemplateMessages(fileMap: FileMap, title?: string) {
     }
   }
 
-  let filteredFiles = files;
-
-  /*
-   * ignoring common unwanted files
-   * exclude    .git
-   */
-  filteredFiles = filteredFiles.filter((x) => x.path.startsWith('.git') == false);
-
-  // exclude    lock files
-  const comminLockFiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
-  filteredFiles = filteredFiles.filter((x) => comminLockFiles.includes(x.name) == false);
-
-  // exclude    .bolt
-  filteredFiles = filteredFiles.filter((x) => x.path.startsWith('.bolt') == false);
+  // .bolt: Extracted for metadata (ignore/prompt), then excluded here
+  const filteredFiles = files.filter((x) => x.path.startsWith('.bolt') == false);
 
   // check for ignore file in .bolt folder
   const templateIgnoreFile = files.find((x) => x.path.startsWith('.bolt') && x.name == 'ignore');

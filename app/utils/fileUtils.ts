@@ -18,6 +18,8 @@ export const IGNORE_PATTERNS = [
   '**/*.log',
   '**/.DS_Store',
   '**/package-lock.json',
+  '**/yarn.lock',
+  '**/pnpm-lock.yaml',
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',
