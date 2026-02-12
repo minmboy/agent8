@@ -833,12 +833,9 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   </div>
                 </div>
                 <div className="w-full md:w-auto relative z-2 mt-4 md:relative md:aspect-[16/9] rounded-[8px] xl:flex-1 xl:min-h-0 xl:min-w-0 xl:max-w-full xl:rounded-[24px] overflow-hidden">
-                  <div className="md:absolute md:left-[1px] md:right-[1px] md:top-[1px] md:z-1 flex flex-col md:items-center md:justify-center gap-2 md:flex-row md:gap-4 xl:gap-7 rounded-[8px] xl:rounded-t-[24px] overflow-hidden md:bg-[linear-gradient(180deg,_#000_0%,_rgba(0,0,0,0.98)_4.7%,_rgba(0,0,0,0.96)_8.9%,_rgba(0,0,0,0.93)_12.8%,_rgba(0,0,0,0.90)_16.56%,_rgba(0,0,0,0.86)_20.37%,_rgba(0,0,0,0.82)_24.4%,_rgba(0,0,0,0.77)_28.83%,_rgba(0,0,0,0.71)_33.84%,_rgba(0,0,0,0.65)_39.6%,_rgba(0,0,0,0.57)_46.3%,_rgba(0,0,0,0.48)_54.1%,_rgba(0,0,0,0.38)_63.2%,_rgba(0,0,0,0.27)_73.76%,_rgba(0,0,0,0.14)_85.97%,_rgba(0,0,0,0.00)_100%)]">
+                  <div className="md:absolute md:left-[1px] md:right-[1px] md:top-[1px] md:z-1 flex flex-col md:items-center md:justify-center gap-2 md:flex-row md:gap-4 xl:gap-5 rounded-[8px] xl:rounded-t-[24px] overflow-hidden md:bg-[linear-gradient(180deg,_#000_0%,_rgba(0,0,0,0.98)_4.7%,_rgba(0,0,0,0.96)_8.9%,_rgba(0,0,0,0.93)_12.8%,_rgba(0,0,0,0.90)_16.56%,_rgba(0,0,0,0.86)_20.37%,_rgba(0,0,0,0.82)_24.4%,_rgba(0,0,0,0.77)_28.83%,_rgba(0,0,0,0.71)_33.84%,_rgba(0,0,0,0.65)_39.6%,_rgba(0,0,0,0.57)_46.3%,_rgba(0,0,0,0.48)_54.1%,_rgba(0,0,0,0.38)_63.2%,_rgba(0,0,0,0.27)_73.76%,_rgba(0,0,0,0.14)_85.97%,_rgba(0,0,0,0.00)_100%)]">
                     {Object.entries(VIDEO_GUIDE_TABS).map(([key, value]) => (
-                      <div
-                        key={key}
-                        className="grid grid-cols-6 gap-2 md:flex md:items-center md:gap-2 md:pt-3 xl:gap-3"
-                      >
+                      <div key={key} className="grid grid-cols-6 gap-2 md:flex md:items-center md:gap-2 md:pt-3">
                         <value.icon size={28} color="#99A2B0" className="hidden xl:block xl:flex-shrink-0" />
                         {Object.entries(value.list).map(([listKey, listValue], listIndex) => (
                           <button
@@ -974,7 +971,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     'sticky bottom-0': chatStarted && isSmallViewport,
                     'pl-6': !isSmallViewport,
                     'tablet:max-w-chat': chatStarted,
-                    'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-8 max-w-[632px] !pl-0 z-[100]':
+                    'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-3 max-w-[632px] !pl-0 z-[100]':
                       !chatStarted,
                     'z-prompt': chatStarted && (!isSmallViewport || mobilePreviewMode),
                     'z-chat-input-elevated': chatStarted && isSmallViewport && !mobilePreviewMode,
@@ -1298,7 +1295,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   repeatType: 'loop',
                 }}
               >
-                <ChevronDoubleDownIcon size={24} color="rgba(255, 255, 255, 0.4)" />
+                <ChevronDoubleDownIcon size={24} color="#fff" />
               </motion.div>
             )}
           </div>
