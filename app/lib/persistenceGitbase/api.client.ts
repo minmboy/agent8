@@ -3,7 +3,7 @@ import axios from 'axios';
 import { stripMetadata } from '~/components/chat/UserMessage';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { repoStore } from '~/lib/stores/repo';
-import { WORK_DIR } from '~/utils/constants';
+import { WORK_DIR, MAX_PROJECT_SIZE_MB, MAX_PROJECT_SIZE_BYTES } from '~/utils/constants';
 import { isCommitHash, unzipCode } from './utils';
 import type { FileMap } from '~/lib/stores/files';
 import { filesToArtifactsNoContent } from '~/utils/fileUtils';
@@ -14,7 +14,6 @@ import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('persistenceGitbase');
 const MAX_ASSISTANT_MESSAGE_SIZE = 20 * 1024; // 20KB for assistant message content
-const MAX_REQUEST_BODY_SIZE = 100; // 100MB (Cloudflare request body limit) in MB
 
 const truncateMessage = (message: string, maxSize: number): string => {
   if (message.length <= maxSize) {
@@ -29,7 +28,7 @@ const truncateMessage = (message: string, maxSize: number): string => {
 
 const isRequestBodySizeValid = (requestBody: object): boolean => {
   const bodySize = new Blob([JSON.stringify(requestBody)]).size;
-  return bodySize <= MAX_REQUEST_BODY_SIZE * 1024 * 1024;
+  return bodySize <= MAX_PROJECT_SIZE_BYTES;
 };
 
 /**
@@ -99,7 +98,7 @@ const performCommit = async (options: CommitOptions) => {
 
   // Validate request body size before posting
   if (!isRequestBodySizeValid(requestBody)) {
-    throw new Error(`Maximum request size is ${MAX_REQUEST_BODY_SIZE}MB. Please reduce the file size.`);
+    throw new Error(`Request size exceeds ${MAX_PROJECT_SIZE_MB}MB limit. Please reduce the file size.`);
   }
 
   // Call API to commit changes
