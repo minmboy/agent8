@@ -36,6 +36,7 @@ import { toast } from 'react-toastify';
 import { isCommitedMessage } from '~/lib/persistenceGitbase/utils';
 import { convertFileMapToFileSystemTree } from '~/utils/fileUtils';
 import { DeployError, isAbortError, StatusCodeError } from '~/utils/errors';
+import { sentryCrumb, sentrySpan } from '~/lib/sentry';
 
 const { saveAs } = fileSaver;
 
@@ -175,16 +176,19 @@ export class WorkbenchStore {
 
     // Set state and create promise
     logger.info(`🚀 Starting container initialization...`);
+    sentryCrumb('container', 'Container initialization started');
     this.#initializationState = 'initializing';
     this.#initializationPromise = this.#doInitializeContainer(accessToken);
 
     try {
       const result = await this.#initializationPromise;
       logger.info(`✅ Container initialization completed successfully`);
+      sentryCrumb('container', 'Container initialization completed');
 
       return result;
     } catch (error) {
       logger.error(`❌ Container initialization failed:`, error);
+      sentryCrumb('container', 'Container initialization failed', undefined, 'error');
       throw error;
     } finally {
       // Reset state
@@ -1387,6 +1391,7 @@ export class WorkbenchStore {
 
     try {
       this.isDeploying.set(true);
+      sentryCrumb('publish', 'Project deployment started', { chatId });
 
       this.abortAllActions();
 
@@ -1436,10 +1441,14 @@ export class WorkbenchStore {
       checkAborted();
 
       // Build project
-      const buildResult = await this.#runShellCommand(
-        shell,
-        `${SHELL_COMMANDS.BUILD_PROJECT} --base ./ && ${SHELL_COMMANDS.BUILD_SERVER}`,
-        signal,
+      sentryCrumb('publish', 'Build started');
+
+      const buildResult = await sentrySpan('publish.build', 'build', () =>
+        this.#runShellCommand(
+          shell,
+          `${SHELL_COMMANDS.BUILD_PROJECT} --base ./ && ${SHELL_COMMANDS.BUILD_SERVER}`,
+          signal,
+        ),
       );
       checkAborted();
 
@@ -1473,7 +1482,11 @@ export class WorkbenchStore {
       }
 
       // Deploy project
-      const deployResult = await this.#runShellCommand(shell, 'npx -y @agent8/deploy --prod', signal);
+      sentryCrumb('publish', 'Deploy started');
+
+      const deployResult = await sentrySpan('publish.deploy', 'deploy', () =>
+        this.#runShellCommand(shell, 'npx -y @agent8/deploy --prod', signal),
+      );
       checkAborted();
 
       if (deployResult?.exitCode !== 0) {
@@ -1510,11 +1523,14 @@ export class WorkbenchStore {
 
       // Handle successful deployment
       this.#handleSuccessfulDeployment(verseId, chatId, title, lastCommitHash, parentVerseId);
+      sentryCrumb('publish', 'Project deployment completed', { chatId, verseId });
     } catch (error) {
       if (isAbortError(error)) {
         logger.info('publish aborted by user');
         return;
       }
+
+      sentryCrumb('publish', 'Project deployment failed', { chatId, failedReason }, 'error');
 
       const errorMessage = 'Failed to publish';
       logger.error('[Publish] Error:', error);

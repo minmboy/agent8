@@ -4,6 +4,7 @@ import { defineConfig, type ViteDevServer } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { optimizeCssModules } from 'vite-plugin-optimize-css-modules';
 import tsconfigPaths from 'vite-tsconfig-paths';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 import * as dotenv from 'dotenv';
 import { execSync } from 'child_process';
 import { readFileSync } from 'fs';
@@ -95,6 +96,8 @@ export default defineConfig((config) => {
     },
     build: {
       target: 'esnext',
+      // Generate source maps for Sentry (hidden from browser)
+      sourcemap: config.mode === 'production' ? 'hidden' : true,
       rollupOptions: {
         output: {
           format: 'esm',
@@ -157,6 +160,38 @@ export default defineConfig((config) => {
       chrome129IssuePlugin(),
       chromeDevtoolsPlugin(),
       config.mode === 'production' && optimizeCssModules({ apply: 'build' }),
+      
+      // Sentry Vite Plugin - uploads source maps to Sentry in production builds
+      config.mode === 'production' &&
+        !!process.env.SENTRY_AUTH_TOKEN &&
+        sentryVitePlugin({
+          org: process.env.SENTRY_ORG,
+          project: process.env.SENTRY_PROJECT,
+          authToken: process.env.SENTRY_AUTH_TOKEN,
+          
+          // Release configuration
+          release: {
+            name: `agent8@${gitInfo.commitHash}`,
+            setCommits: {
+              auto: true,
+              ignoreMissing: true,
+            },
+          },
+          
+          // Source maps configuration
+          sourcemaps: {
+            // Upload all build artifacts
+            assets: ['./build/**'],
+            // Delete source maps after upload (security)
+            filesToDeleteAfterUpload: ['./build/**/*.map'],
+          },
+          
+          // Telemetry
+          telemetry: false,
+          
+          // Silent mode in CI
+          silent: !!process.env.CI,
+        }),
     ],
     envPrefix: [
       'VITE_',

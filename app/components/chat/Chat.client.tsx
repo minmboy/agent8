@@ -67,6 +67,7 @@ import { get2DStarterPrompt, get3DStarterPrompt } from '~/lib/common/prompts/age
 import { stripMetadata } from './UserMessage';
 import type { ProgressAnnotation } from '~/types/context';
 import { handleChatError, type HandleChatErrorOptions } from '~/utils/errorNotification';
+import { sentryCrumb } from '~/lib/sentry';
 import { getElapsedTime } from '~/utils/performance';
 import ToastContainer from '~/components/ui/ToastContainer';
 import { useVersionFeature } from '~/lib/hooks/useVersionFeature';
@@ -685,6 +686,12 @@ export const ChatImpl = memo(
         // Custom fetch to add Turnstile token and preserve HTTP status codes
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const turnstileHeaders = await getTurnstileHeaders();
+          const { model: currentModel, provider: currentProvider } = chatStateRef.current;
+
+          sentryCrumb('chat', 'LLM API request started', {
+            model: currentModel,
+            provider: currentProvider?.name,
+          });
 
           const response = await fetch(input, {
             ...init,
@@ -696,6 +703,7 @@ export const ChatImpl = memo(
 
           if (!response.ok) {
             const serverMessage = await response.text();
+            sentryCrumb('chat', 'LLM API request failed', { status: response.status }, 'error');
             throw new FetchError((serverMessage ?? 'unknown error').trim(), response.status);
           }
 
@@ -1724,6 +1732,15 @@ export const ChatImpl = memo(
         if (!messageContent?.trim()) {
           return;
         }
+
+        // Track user message in Sentry breadcrumbs
+        sentryCrumb('chat', 'User sent message', {
+          model,
+          provider: provider?.name,
+          isFirstChat: wasFirstChat,
+          hasAttachments: attachmentList.length > 0,
+          messageLength: messageContent.length,
+        });
 
         lastUserPromptRef.current = messageContent;
 
