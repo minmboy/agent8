@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import type { FileMap } from '~/lib/stores/files';
-import { isBinaryPathByExtension } from './fileUtils';
+import { isBinaryPathByExtension, shouldIncludeFile } from './fileUtils';
 
 // ZIP 파일을 받아서 FileMap 형식으로 변환
 export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMap> {
@@ -14,23 +14,10 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
     const promises = Object.keys(contents.files).map(async (filename) => {
       const zipEntry = contents.files[filename];
 
-      if (filename.includes('__MACOSX')) {
+      if (!shouldIncludeFile(filename)) {
         return;
       }
 
-      if (filename.includes('node_modules')) {
-        return;
-      }
-
-      if (filename.includes('package-lock.json')) {
-        return;
-      }
-
-      if (filename.includes('.DS_Store')) {
-        return;
-      }
-
-      // 디렉토리 건너뛰기
       if (zipEntry.dir) {
         return;
       }
@@ -70,4 +57,48 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
     console.error('Error extracting ZIP file:', error);
     throw new Error('Failed to extract ZIP file');
   }
+}
+
+export function stripTopLevelDirectory(fileMap: FileMap): FileMap {
+  const paths = Object.keys(fileMap);
+
+  if (paths.length === 0) {
+    return fileMap;
+  }
+
+  const topLevelEntries = new Set<string>();
+  const pathData: Array<[string, string, any]> = []; // [path, topFolder, fileData]
+
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
+    const firstSlashIndex = path.indexOf('/');
+
+    if (firstSlashIndex === -1) {
+      // If top-level file exists, do not remove it
+      return fileMap;
+    }
+
+    const topFolder = path.substring(0, firstSlashIndex);
+    topLevelEntries.add(topFolder);
+    pathData.push([path, topFolder, fileData]);
+  }
+
+  // If not a single top-level directory, return original
+  if (topLevelEntries.size !== 1) {
+    return fileMap;
+  }
+
+  // Remove single top-level directory (reuse collected data)
+  const wrapperDir = Array.from(topLevelEntries)[0];
+  const wrapperPrefix = `${wrapperDir}/`;
+  const normalizedFileMap: FileMap = {};
+
+  for (const [path, topFolder, fileData] of pathData) {
+    if (topFolder === wrapperDir) {
+      const normalizedPath = path.substring(wrapperPrefix.length);
+      normalizedFileMap[normalizedPath] = fileData;
+    }
+  }
+
+  return normalizedFileMap;
 }
