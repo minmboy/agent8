@@ -17,6 +17,7 @@ export const IGNORE_PATTERNS = [
   '**/__MACOSX/**',
   '**/*.log',
   '**/.DS_Store',
+  '**/package-lock.json',
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',

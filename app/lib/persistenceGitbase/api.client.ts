@@ -27,7 +27,7 @@ const truncateMessage = (message: string, maxSize: number): string => {
   return truncated;
 };
 
-const validateRequestBodySize = (requestBody: object): boolean => {
+const isRequestBodySizeValid = (requestBody: object): boolean => {
   const bodySize = new Blob([JSON.stringify(requestBody)]).size;
   return bodySize <= MAX_REQUEST_BODY_SIZE * 1024 * 1024;
 };
@@ -98,12 +98,12 @@ const performCommit = async (options: CommitOptions) => {
   };
 
   // Validate request body size before posting
-  if (!validateRequestBodySize(requestBody)) {
+  if (!isRequestBodySizeValid(requestBody)) {
     throw new Error(`Maximum request size is ${MAX_REQUEST_BODY_SIZE}MB. Please reduce the file size.`);
   }
 
   // Call API to commit changes
-  const response = await axios.post('/api/gitlab/commits', requestBody, signal ? { signal } : undefined);
+  const response = await axios.post('/api/gitlab/commits', requestBody, signal ? { signal } : {});
 
   const result = response.data;
 

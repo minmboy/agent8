@@ -62,6 +62,10 @@ export async function extractZipTemplate(zipBuffer: ArrayBuffer): Promise<FileMa
 export function stripTopLevelDirectory(fileMap: FileMap): FileMap {
   const allPaths = Object.keys(fileMap);
 
+  if (allPaths.length === 0) {
+    return fileMap;
+  }
+
   // Extract top level entries (directories or files)
   const topLevelEntries = new Set<string>();
 
