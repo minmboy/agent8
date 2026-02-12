@@ -2088,11 +2088,6 @@ export const ChatImpl = memo(
         runAnimation();
 
         const containerInstance = await workbench.container;
-
-        /*
-         * ZIP 파일의 불필요한 래퍼 디렉토리 제거 (예: my-project/ → 루트)
-         * convertFileMapToFileSystemTree는 WORK_DIR 제거만 하므로 여기서 먼저 정규화 필요
-         */
         const normalizedFileMap = stripTopLevelDirectory(fileMap);
         await containerInstance.mount(convertFileMapToFileSystemTree(normalizedFileMap));
 
