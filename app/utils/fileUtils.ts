@@ -739,6 +739,32 @@ export function getFileContents(fileMap: FileMap, path: string): string | null {
 }
 
 /**
+ * Calculate total size of FileMap in MB
+ * @param fileMap FileMap to calculate size for
+ * @returns Total size in MB
+ */
+export function getFileMapSize(fileMap: FileMap): number {
+  let totalSizeBytes = 0;
+
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
+
+    if (!fileData || fileData.type !== 'file') {
+      continue;
+    }
+
+    if (fileData.isBinary && fileData.buffer) {
+      totalSizeBytes += fileData.buffer.byteLength;
+    } else if (fileData.content) {
+      totalSizeBytes += new Blob([fileData.content]).size;
+    }
+  }
+
+  // Convert bytes to MB
+  return totalSizeBytes / (1024 * 1024);
+}
+
+/**
  * Prepare files for API request by clearing binary file data
  * Keeps file metadata (isBinary, mimeType, etc.) but removes heavy buffer/content
  * This reduces request payload size while preserving file list for LLM context

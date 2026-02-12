@@ -28,7 +28,6 @@ import {
   PROMPT_COOKIE_KEY,
   PROVIDER_LIST,
   WORK_DIR,
-  MAX_PROJECT_SIZE_BYTES,
   MAX_PROJECT_SIZE_MB,
 } from '~/utils/constants';
 import { cubicEasingFn } from '~/utils/easings';
@@ -49,7 +48,7 @@ import { logStore } from '~/lib/stores/logs';
 import { MESSAGE_ANNOTATIONS } from '~/utils/constants';
 import { streamingState, shouldPlaySoundOnPreviewReady } from '~/lib/stores/streaming';
 import { restoreEventStore, clearRestoreEvent } from '~/lib/stores/restore';
-import { convertFileMapToFileSystemTree } from '~/utils/fileUtils';
+import { convertFileMapToFileSystemTree, getFileMapSize } from '~/utils/fileUtils';
 import type { Template } from '~/types/template';
 import { playCompletionSound } from '~/utils/sound';
 import {
@@ -2082,33 +2081,12 @@ export const ChatImpl = memo(
     const handleProjectZipImport = async (title: string, zipFile: File) => {
       const startTime = performance.now();
 
-      // Validate file map size against project size limit
-      const isFileMapSizeValid = (fileMap: FileMap) => {
-        let totalSize = 0;
-
-        for (const path in fileMap) {
-          const fileData = fileMap[path];
-
-          if (!fileData || fileData.type !== 'file') {
-            continue;
-          }
-
-          if (fileData.isBinary && fileData.buffer) {
-            totalSize += fileData.buffer.byteLength;
-          } else if (fileData.content) {
-            totalSize += new Blob([fileData.content]).size;
-          }
-        }
-
-        return totalSize <= MAX_PROJECT_SIZE_BYTES;
-      };
-
       try {
         // Extract and mount files to container
         const { fileMap } = await getZipTemplates(zipFile, title);
 
         // Validate extracted file size
-        if (!isFileMapSizeValid(fileMap)) {
+        if (getFileMapSize(fileMap) >= MAX_PROJECT_SIZE_MB) {
           throw new AppError(`Project size exceeds ${MAX_PROJECT_SIZE_MB}MB limit. Please reduce the file size.`, {
             sendChatError: false,
           });
