@@ -748,31 +748,6 @@ export function getFileContents(fileMap: FileMap, path: string): string | null {
 }
 
 /**
- * Calculate total size of FileMap in MB
- * @param fileMap FileMap to calculate size for
- * @returns Total size in bytes
- */
-export function getFileMapSizeBytes(fileMap: FileMap): number {
-  let totalSizeBytes = 0;
-
-  for (const path in fileMap) {
-    const fileData = fileMap[path];
-
-    if (!fileData || fileData.type !== 'file') {
-      continue;
-    }
-
-    if (fileData.isBinary && fileData.buffer) {
-      totalSizeBytes += fileData.buffer.byteLength;
-    } else if (fileData.content) {
-      totalSizeBytes += new Blob([fileData.content]).size;
-    }
-  }
-
-  return totalSizeBytes;
-}
-
-/**
  * Get total size of FileMap in specified unit
  * @param fileMap FileMap to calculate size for
  * @param unit Unit to convert to (default: 'B')
@@ -800,6 +775,31 @@ export function bytesToUnit(bytes: number, unit: SizeUnit, base: 1000 | 1024 = 1
   }
 
   return bytes / Math.pow(base, UNIT_POW[unit]);
+}
+
+/**
+ * Calculate total size of FileMap in MB
+ * @param fileMap FileMap to calculate size for
+ * @returns Total size in bytes
+ */
+function getFileMapSizeBytes(fileMap: FileMap): number {
+  let totalSizeBytes = 0;
+
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
+
+    if (!fileData || fileData.type !== 'file') {
+      continue;
+    }
+
+    if (fileData.isBinary && fileData.buffer) {
+      totalSizeBytes += fileData.buffer.byteLength;
+    } else if (fileData.content) {
+      totalSizeBytes += new Blob([fileData.content]).size;
+    }
+  }
+
+  return totalSizeBytes;
 }
 
 /**
