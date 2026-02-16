@@ -1257,7 +1257,7 @@ export const ChatImpl = memo(
         const temResp = await fetchTemplateFromAPI(
           starterTemplateResp.template!,
           starterTemplateResp.title,
-          starterTemplateResp.projectRepo,
+          starterTemplateResp.projectRepo || 'basic-project',
           signal,
         ).catch((e) => {
           checkAborted();
