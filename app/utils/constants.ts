@@ -41,8 +41,12 @@ export const FIXED_MODELS = {
       model: 'gemini-2.5-flash',
     },
     {
+      provider: PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.OPEN_ROUTER)!,
+      model: 'openai/gpt-5-mini',
+    },
+    {
       provider: PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.GOOGLE_VERTEX_AI)!,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
     },
   ],
   PROMPT_ENHANCER_TEMPLATE: {

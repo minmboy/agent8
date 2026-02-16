@@ -311,31 +311,65 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     useEffect(() => {
       const textarea = textareaRef?.current;
 
-      if (textarea) {
-        // Use requestAnimationFrame to ensure we measure after browser paint
-        requestAnimationFrame(() => {
-          // Reset height to auto to get accurate scrollHeight
-          textarea.style.height = 'auto';
-
-          // Get the actual content height
-          const contentHeight = textarea.scrollHeight;
-
-          // Calculate new height (constrained between min and max)
-          const newHeight = Math.min(Math.max(contentHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
-
-          // Apply the new height with !important to override any CSS
-          textarea.style.setProperty('height', `${newHeight}px`, 'important');
-
-          // Only show scrollbar when content exceeds max height
-          const shouldScroll = contentHeight > TEXTAREA_MAX_HEIGHT;
-          textarea.style.setProperty('overflow-y', shouldScroll ? 'auto' : 'hidden', 'important');
-
-          // Add debug data attributes
-          textarea.setAttribute('data-max-height', String(TEXTAREA_MAX_HEIGHT));
-          textarea.setAttribute('data-calculated-height', String(newHeight));
-          textarea.setAttribute('data-should-scroll', String(shouldScroll));
-        });
+      if (!textarea) {
+        return undefined;
       }
+
+      // Use requestAnimationFrame to ensure we measure after browser paint
+      const rafId = requestAnimationFrame(() => {
+        // Save current scroll position and selection BEFORE any changes
+        const currentScrollTop = textarea.scrollTop;
+        const currentScrollHeight = textarea.scrollHeight;
+        const currentClientHeight = textarea.clientHeight;
+        const currentSelectionStart = textarea.selectionStart;
+        const currentSelectionEnd = textarea.selectionEnd;
+
+        // Check if user was at the bottom BEFORE height change (within 5px threshold)
+        const wasAtBottom = currentScrollTop + currentClientHeight >= currentScrollHeight - 5;
+
+        // Reset height to auto to get accurate scrollHeight
+        textarea.style.height = 'auto';
+
+        // Get the actual content height
+        const contentHeight = textarea.scrollHeight;
+
+        // Calculate new height (constrained between min and max)
+        const newHeight = Math.min(Math.max(contentHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
+
+        // Apply the new height with !important to override any CSS
+        textarea.style.setProperty('height', `${newHeight}px`, 'important');
+
+        // Only show scrollbar when content exceeds max height
+        const shouldScroll = contentHeight > TEXTAREA_MAX_HEIGHT;
+        textarea.style.setProperty('overflow-y', shouldScroll ? 'auto' : 'hidden', 'important');
+
+        // Restore scroll position
+        if (shouldScroll) {
+          if (wasAtBottom) {
+            // If user was at bottom, keep them at bottom (natural typing behavior)
+            textarea.scrollTop = textarea.scrollHeight;
+          } else {
+            // If user was scrolled up (editing middle content), maintain their position
+            textarea.scrollTop = currentScrollTop;
+          }
+        } else {
+          // If content fits within max height, restore previous scroll position
+          textarea.scrollTop = currentScrollTop;
+        }
+
+        // Restore cursor position
+        textarea.setSelectionRange(currentSelectionStart, currentSelectionEnd);
+
+        // Add debug data attributes
+        textarea.setAttribute('data-max-height', String(TEXTAREA_MAX_HEIGHT));
+        textarea.setAttribute('data-calculated-height', String(newHeight));
+        textarea.setAttribute('data-should-scroll', String(shouldScroll));
+      });
+
+      // Cleanup function to cancel animation frame if component unmounts
+      return () => {
+        cancelAnimationFrame(rafId);
+      };
     }, [input, TEXTAREA_MAX_HEIGHT, chatStarted, isXlViewport]);
 
     // State to store scroll container ref
