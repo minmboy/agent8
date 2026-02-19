@@ -164,7 +164,14 @@ async function imageUploadAction({ context, request }: ActionFunctionArgs) {
       });
     }
 
-    const result = await uploadAttachment(file, path, verse, (context?.user as ContextUser)?.accessToken);
+    const user = context?.user as ContextUser;
+
+    const result = await uploadAttachment(
+      file,
+      path,
+      path === 'chat-uploads' ? user.walletAddress : verse,
+      user.accessToken,
+    );
 
     if (!result.success) {
       throw new Error(result.error || 'Upload failed');
