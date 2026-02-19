@@ -1,11 +1,9 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { v4 as uuidv4 } from 'uuid';
-import type { ContextUser } from '~/lib/verse8/middleware';
+import { withV8AuthUser, type ContextUser } from '~/lib/verse8/middleware';
 import { ATTACHMENT_EXTS } from '~/utils/constants';
 
-export async function action(args: ActionFunctionArgs) {
-  return imageUploadAction(args);
-}
+export const action = withV8AuthUser(imageUploadAction, { checkCredit: true });
 
 export interface UploadResult {
   success: boolean;
