@@ -25,9 +25,9 @@ export const MODEL_WHITELIST: WhitelistItem[] = [
     modelName: 'claude-sonnet-4-20250514',
   },
   {
-    label: 'Claude 4.5 Sonnet',
+    label: 'Claude 4.6 Sonnet',
     providerName: PROVIDER_NAMES.OPEN_ROUTER,
-    modelName: 'anthropic/claude-sonnet-4.5',
+    modelName: 'anthropic/claude-sonnet-4.6',
     userSelectable: true,
   },
   {
@@ -47,9 +47,9 @@ export const MODEL_WHITELIST: WhitelistItem[] = [
     modelName: 'openai/o4-mini',
   },
   {
-    label: 'Gemini 3 Pro',
+    label: 'Gemini 3.1 Pro',
     providerName: PROVIDER_NAMES.GOOGLE_VERTEX_AI,
-    modelName: 'gemini-3-pro-preview',
+    modelName: 'gemini-3.1-pro-preview',
     userSelectable: true,
   },
   {
