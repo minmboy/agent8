@@ -32,7 +32,7 @@ const llmManager = LLMManager.getInstance(import.meta.env);
 export const PROVIDER_LIST = llmManager.getAllProviders();
 export const DEFAULT_PROVIDER = PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.GOOGLE_VERTEX_AI)!;
 
-const DEFAULT_MODEL_NAME = 'gemini-3-pro-preview';
+const DEFAULT_MODEL_NAME = 'gemini-3.1-pro-preview';
 
 export const FIXED_MODELS = {
   SELECT_STARTER_TEMPLATES: [
