@@ -7,10 +7,12 @@ import { tool } from 'ai';
 /**
  * Tool for searching file contents with pattern matching (similar to grep)
  */
-export const createFileContentSearchTool = (fileMap: FileMap) => {
+export const createFileContentSearchTool = (fileMap: FileMap, orchestration: Orchestration) => {
+  const searched = orchestration.searchSet;
+
   return tool({
     description:
-      'READ ONLY TOOL : Search file contents for specific patterns or text, similar to grep. Use this tool when you need to find specific code patterns, variable definitions, or text within files. These tools only provide read functionality and cannot change the state of files. Changes to files should be performed through output, not tool calls.',
+      'READ ONLY TOOL : Search file contents for specific patterns or text, similar to grep. Use this tool when you need to find specific code patterns, variable definitions, or text within files. These tools only provide read functionality and cannot change the state of files. Changes to files should be performed through output, not tool calls. CRITICAL: If the same pattern has already been searched, do not call this tool again with the same pattern.',
     inputSchema: z.object({
       pattern: z.string().describe('Text pattern or regular expression to search for in file content'),
       caseSensitive: z.boolean().optional().describe('Whether the search should be case-sensitive (default: false)'),
@@ -23,6 +25,23 @@ export const createFileContentSearchTool = (fileMap: FileMap) => {
         .optional()
         .describe('Number of lines to include after each match, similar to grep -A option (default: 0)'),
     }),
+    outputSchema: z.object({
+      pattern: z.string(),
+      totalMatches: z.number(),
+      matchingFiles: z.array(
+        z.object({
+          path: z.string(),
+          matches: z.array(
+            z.object({
+              line: z.number(),
+              text: z.string(),
+              contextLines: z.array(z.object({ line: z.number(), text: z.string(), isMatch: z.boolean() })).optional(),
+            }),
+          ),
+        }),
+      ),
+      systemMessage: z.string().optional(),
+    }),
     execute: async ({
       pattern,
       caseSensitive,
@@ -34,20 +53,43 @@ export const createFileContentSearchTool = (fileMap: FileMap) => {
       beforeLines?: number;
       afterLines?: number;
     }) => {
-      const results = searchFileContentsByPattern(fileMap, pattern, caseSensitive, beforeLines, afterLines);
-
-      return {
+      const result = {
         pattern,
-        totalMatches: results.length,
-        matchingFiles: results.map((result) => ({
-          path: result.path.replace(WORK_DIR + '/', ''),
-          matches: result.matches.map((match) => ({
-            line: match.line,
-            text: match.text,
-            contextLines: match.contextLines,
-          })),
-        })),
+        totalMatches: 0,
+        matchingFiles: [] as Array<{
+          path: string;
+          matches: Array<{
+            line: number;
+            text: string;
+            contextLines?: Array<{ line: number; text: string; isMatch: boolean }>;
+          }>;
+        }>,
+        systemMessage: undefined as string | undefined,
       };
+
+      const searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
+
+      if (searched.has(searchPattern)) {
+        result.systemMessage = `⚠️ Pattern "${searchPattern}" was already searched in this conversation. Please refer to the previous search results instead of searching again.`;
+      } else {
+        try {
+          const searchResults = searchFileContentsByPattern(fileMap, pattern, caseSensitive, beforeLines, afterLines);
+          searched.add(searchPattern);
+          result.totalMatches = searchResults.length;
+          result.matchingFiles = searchResults.map((fileResult) => ({
+            path: fileResult.path.replace(WORK_DIR + '/', ''),
+            matches: fileResult.matches.map((match) => ({
+              line: match.line,
+              text: match.text,
+              contextLines: match.contextLines,
+            })),
+          }));
+        } catch (e) {
+          result.systemMessage = `⚠️ Search failed: ${e instanceof Error ? e.message : String(e)}`;
+        }
+      }
+
+      return result;
     },
   });
 };
