@@ -27,19 +27,23 @@ export const createFileContentSearchTool = (fileMap: FileMap, orchestration: Orc
     }),
     outputSchema: z.object({
       pattern: z.string(),
-      totalMatches: z.number(),
-      matchingFiles: z.array(
-        z.object({
-          path: z.string(),
-          matches: z.array(
-            z.object({
-              line: z.number(),
-              text: z.string(),
-              contextLines: z.array(z.object({ line: z.number(), text: z.string(), isMatch: z.boolean() })).optional(),
-            }),
-          ),
-        }),
-      ),
+      totalMatches: z.number().optional(),
+      matchingFiles: z
+        .array(
+          z.object({
+            path: z.string(),
+            matches: z.array(
+              z.object({
+                line: z.number(),
+                text: z.string(),
+                contextLines: z
+                  .array(z.object({ line: z.number(), text: z.string(), isMatch: z.boolean() }))
+                  .optional(),
+              }),
+            ),
+          }),
+        )
+        .optional(),
       systemMessage: z.string().optional(),
     }),
     execute: async ({
@@ -53,19 +57,19 @@ export const createFileContentSearchTool = (fileMap: FileMap, orchestration: Orc
       beforeLines?: number;
       afterLines?: number;
     }) => {
-      const result = {
-        pattern,
-        totalMatches: 0,
-        matchingFiles: [] as Array<{
+      const result: {
+        pattern: string;
+        totalMatches?: number;
+        matchingFiles?: Array<{
           path: string;
           matches: Array<{
             line: number;
             text: string;
             contextLines?: Array<{ line: number; text: string; isMatch: boolean }>;
           }>;
-        }>,
-        systemMessage: undefined as string | undefined,
-      };
+        }>;
+        systemMessage?: string;
+      } = { pattern };
 
       const searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
 
