@@ -179,9 +179,6 @@ export const Menu = () => {
         <div className="h-13.5 flex items-center justify-between px-4 border-b border-gray-100 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-900/50">
           <div className="text-gray-900 dark:text-white font-medium"></div>
           <div className="flex flex-col items-end">
-            <span className="font-medium text-sm text-gray-900 dark:text-white truncate">
-              {v8Auth.loading ? 'Loading...' : v8Auth.user?.name || 'Guest User'}
-            </span>
             {v8Auth.user?.email && (
               <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{v8Auth.user.email}</span>
             )}

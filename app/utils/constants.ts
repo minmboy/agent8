@@ -198,3 +198,7 @@ export const ATTACHMENT_EXTS = [
 
 // Verse8 URLs
 export const VERSE8_BASE_URL = 'https://verse8.io';
+
+// Project size limits
+export const MAX_PROJECT_SIZE_MB = 100;
+export const MAX_PROJECT_SIZE_BYTES = MAX_PROJECT_SIZE_MB * 1024 * 1024;

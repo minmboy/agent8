@@ -59,3 +59,16 @@ declare module 'nosleep.js' {
     get isEnabled(): boolean;
   }
 }
+
+// Vite global constants (defined in vite.config.ts)
+declare const __APP_VERSION: string;
+declare const __COMMIT_HASH: string;
+declare const __GIT_BRANCH: string;
+declare const __GIT_COMMIT_TIME: string;
+declare const __GIT_AUTHOR: string;
+declare const __GIT_EMAIL: string;
+declare const __GIT_REMOTE_URL: string;
+declare const __GIT_REPO_NAME: string;
+declare const __PKG_NAME: string;
+declare const __PKG_DESCRIPTION: string;
+declare const __PKG_LICENSE: string;

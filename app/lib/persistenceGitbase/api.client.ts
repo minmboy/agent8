@@ -3,7 +3,7 @@ import axios from 'axios';
 import { stripMetadata } from '~/components/chat/UserMessage';
 import { workbenchStore } from '~/lib/stores/workbench';
 import { repoStore } from '~/lib/stores/repo';
-import { WORK_DIR } from '~/utils/constants';
+import { WORK_DIR, MAX_PROJECT_SIZE_MB, MAX_PROJECT_SIZE_BYTES } from '~/utils/constants';
 import { isCommitHash, unzipCode } from './utils';
 import type { FileMap } from '~/lib/stores/files';
 import { filesToArtifactsNoContent } from '~/utils/fileUtils';
@@ -24,6 +24,99 @@ const truncateMessage = (message: string, maxSize: number): string => {
   logger.warn(`Assistant message truncated from ${message.length} to ${truncated.length} bytes (max: ${maxSize})`);
 
   return truncated;
+};
+
+const isRequestBodySizeValid = (requestBody: object): boolean => {
+  const bodySize = new Blob([JSON.stringify(requestBody)]).size;
+  return bodySize <= MAX_PROJECT_SIZE_BYTES;
+};
+
+/**
+ * Common commit options interface
+ */
+interface CommitOptions {
+  projectName: string;
+  title: string;
+  isFirstCommit: boolean;
+  commitMessage: string;
+  files: Array<{ path: string; content: string }>;
+  deletedFiles?: string[];
+  revertTo?: string | null;
+  signal?: AbortSignal;
+  callback?: (commitHash: string) => void;
+}
+
+/**
+ * Update repository store after commit
+ */
+const updateRepoStore = (result: any, isFirstCommit: boolean, revertTo: string | null | undefined) => {
+  if (isFirstCommit) {
+    repoStore.set({
+      name: result.data.project.name,
+      path: result.data.project.path,
+      title: result.data.project.description.split('\n')[0] || result.data.project.name,
+      latestCommitHash: result.data.commitHash,
+      createdAt: result.data.project.created_at || '',
+    });
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
+  } else {
+    repoStore.setKey('latestCommitHash', result.data.commitHash);
+  }
+
+  if (revertTo) {
+    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
+  }
+};
+
+/**
+ * Core commit function used by commitChanges, commitUserChanged, and commitFiles
+ * Handles request validation, API call, and repository state updates
+ */
+const performCommit = async (options: CommitOptions) => {
+  const {
+    projectName,
+    title,
+    isFirstCommit,
+    commitMessage,
+    files,
+    deletedFiles = [],
+    revertTo,
+    signal,
+    callback,
+  } = options;
+
+  const requestBody = {
+    projectName,
+    isFirstCommit,
+    description: title,
+    files,
+    deletedFiles,
+    commitMessage,
+    baseCommit: revertTo,
+    branch: 'develop',
+  };
+
+  // Validate request body size before posting
+  if (!isRequestBodySizeValid(requestBody)) {
+    throw new Error(`Request size exceeds ${MAX_PROJECT_SIZE_MB}MB limit. Please reduce the file size.`);
+  }
+
+  // Call API to commit changes
+  const response = await axios.post('/api/gitlab/commits', requestBody, signal ? { signal } : {});
+
+  const result = response.data;
+
+  if (!result.data.commitHash) {
+    throw new Error('The code commit has failed.');
+  }
+
+  // Update repository store
+  updateRepoStore(result, isFirstCommit, revertTo);
+
+  // Execute callback if provided
+  callback?.(result.data.commitHash);
+
+  return result;
 };
 
 export const isEnabledGitbasePersistence =
@@ -161,45 +254,17 @@ ${truncateMessage(
 )}
 </V8AssistantMessage>`;
 
-  // API 호출하여 변경사항 커밋
-  const response = await axios.post('/api/gitlab/commits', {
+  // Use performCommit for common commit logic
+  return performCommit({
     projectName,
+    title,
     isFirstCommit,
-    description: title,
+    commitMessage,
     files,
     deletedFiles,
-    commitMessage,
-    baseCommit: revertTo,
-    branch: 'develop',
+    revertTo,
+    callback,
   });
-
-  const result = response.data;
-
-  if (!result.data.commitHash) {
-    throw new Error('The code commit has failed.');
-  }
-
-  if (isFirstCommit) {
-    repoStore.set({
-      name: result.data.project.name,
-      path: result.data.project.path,
-      title: result.data.project.description.split('\n')[0] || result.data.project.name,
-      latestCommitHash: result.data.commitHash,
-      createdAt: result.data.project.created_at || '',
-    });
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  } else {
-    // Update latestCommitHash for subsequent commits
-    repoStore.setKey('latestCommitHash', result.data.commitHash);
-  }
-
-  if (revertTo) {
-    changeChatUrl(result.data.project.path, { replace: true, ignoreChangeEvent: true });
-  }
-
-  callback?.(result.data.commitHash);
-
-  return result;
 };
 
 export const commitUserChanged = async (signal?: AbortSignal) => {
@@ -222,34 +287,72 @@ export const commitUserChanged = async (signal?: AbortSignal) => {
       content: (file as any).content,
     }));
 
-  const response = await axios.post(
-    '/api/gitlab/commits',
-    {
+  const commitMessage = `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`;
+
+  // Use performCommit for common commit logic
+  try {
+    const result = await performCommit({
       projectName,
+      title,
       isFirstCommit: false,
-      description: title,
+      commitMessage,
       files,
-      commitMessage: `The user changed the files.\n${filesToArtifactsNoContent(files, `${Date.now()}`)}`,
-      baseCommit: revertTo,
-      branch: 'develop',
-    },
-    { signal },
-  );
+      deletedFiles: [],
+      revertTo,
+      signal,
+    });
 
-  const result = response.data;
+    // Special handling for revertTo in commitUserChanged
+    if (revertTo) {
+      changeChatUrl(location.pathname, { replace: true, searchParams: { revertTo: result.data.commitHash } });
+    }
 
-  if (!result.data.commitHash) {
-    throw new Error('The user changed files commit has failed.');
+    return result;
+  } catch (error) {
+    // Override error message for user changes
+    if (error instanceof Error && error.message === 'The code commit has failed.') {
+      throw new Error('The user changed files commit has failed.');
+    }
+
+    throw error;
   }
+};
 
-  // Update latestCommitHash
-  repoStore.setKey('latestCommitHash', result.data.commitHash);
+/**
+ * Commit a file map directly
+ * @param fileMap - Map of files to commit
+ * @param commitMessage - Commit message
+ * @param isFirstCommit - Whether this is the first commit
+ */
+export const commitFiles = async (fileMap: FileMap, commitMessage: string, isFirstCommit: boolean) => {
+  const projectName = repoStore.get().name;
+  const title = repoStore.get().title;
 
-  if (revertTo) {
-    changeChatUrl(location.pathname, { replace: true, searchParams: { revertTo: result.data.commitHash } });
-  }
+  logger.info(`Starting commit process (commitFiles) - Project: ${projectName}, isFirstCommit: ${isFirstCommit}`);
 
-  return result;
+  // Get revertTo from URL query parameters
+  const url = new URL(window.location.href);
+  const revertToParam = url.searchParams.get('revertTo');
+  const revertTo = revertToParam && isCommitHash(revertToParam) ? revertToParam : null;
+
+  // Convert fileMap to files array
+  const files = Object.entries(fileMap)
+    .filter(([_, file]) => file && (file as any).content)
+    .map(([path, file]) => ({
+      path: path.replace(WORK_DIR + '/', ''),
+      content: (file as any).content,
+    }));
+
+  // Use performCommit for common commit logic
+  return performCommit({
+    projectName,
+    title,
+    isFirstCommit,
+    commitMessage,
+    files,
+    deletedFiles: [],
+    revertTo,
+  });
 };
 
 export const downloadProjectZip = async (projectPath: string, commitSha?: string) => {

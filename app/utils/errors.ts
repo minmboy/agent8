@@ -1,64 +1,88 @@
 import axios from 'axios';
 
 /**
+ * Application error class with notification control
+ * All custom errors should extend this to support sendChatError flag
+ */
+export class AppError extends Error {
+  readonly sendChatError?: boolean;
+  readonly name: string = 'AppError';
+
+  constructor(message: string, options?: { sendChatError?: boolean }) {
+    super(message);
+    this.sendChatError = options?.sendChatError;
+  }
+}
+
+/**
  * Custom error class for fetch/HTTP errors with status code
  */
-export class FetchError extends Error {
+export class FetchError extends AppError {
+  readonly name: string = 'FetchError';
+
   constructor(
     message: string,
     public status: number,
     public context?: string,
+    options?: { sendChatError?: boolean },
   ) {
-    super(message);
-    this.name = 'FetchError';
+    super(message, options);
   }
 }
 
 export class SkipToastError extends FetchError {
+  readonly name: string = 'SkipToastError';
+
   constructor(
     message: string,
     public status: number,
     public context?: string,
+    options?: { sendChatError?: boolean },
   ) {
-    super(message, status, context);
-    this.name = 'SkipToastError';
+    super(message, status, context, options);
   }
 }
 
-export class DeployError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'DeployError';
+export class DeployError extends AppError {
+  readonly name: string = 'DeployError';
+
+  constructor(message: string, options?: { sendChatError?: boolean }) {
+    super(message, options);
   }
 }
 
 /**
  * Error thrown when LLM repeats a previous response (tool-input-start detected)
  */
-export class LLMRepeatResponseError extends Error {
-  constructor(message: string = 'llm-repeat-response') {
-    super(message);
-    this.name = 'LLMRepeatResponseError';
+export class LLMRepeatResponseError extends AppError {
+  readonly name: string = 'LLMRepeatResponseError';
+
+  constructor(message: string = 'llm-repeat-response', options?: { sendChatError?: boolean }) {
+    super(message, options);
   }
 }
 
-export class StatusCodeError extends Error {
+export class StatusCodeError extends AppError {
+  readonly name: string = 'StatusCodeError';
+
   constructor(
     message: string = 'Status code error',
     public status: number,
+    options?: { sendChatError?: boolean },
   ) {
-    super(message);
-    this.name = 'StatusCodeError';
+    super(message, options);
   }
 }
 
 export class MachineAPIError extends StatusCodeError {
+  readonly name: string = 'MachineAPIError';
+
   constructor(
     message: string = 'Machine API error',
     public status: number,
+    options?: { sendChatError?: boolean },
   ) {
-    super(message, status);
-    this.name = 'MachineAPIError';
+    super(message, status, options);
   }
 }
 
@@ -80,10 +104,11 @@ export function isAbortError(error: unknown): boolean {
   return false;
 }
 
-export class NoneError extends Error {
-  constructor(message: string = 'None error') {
-    super(message);
-    this.name = 'NoneError';
+export class NoneError extends AppError {
+  readonly name: string = 'NoneError';
+
+  constructor(message: string = 'None error', options?: { sendChatError?: boolean }) {
+    super(message, options);
   }
 }
 

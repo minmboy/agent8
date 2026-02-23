@@ -81,3 +81,17 @@ export default async function handleRequest(
     status: responseStatusCode,
   });
 }
+
+/*
+ * Server-side error handler
+ * Errors are captured by @sentry/cloudflare middleware in functions/[[path]].ts
+ */
+export const handleError = (error: unknown, { request }: { request: Request }) => {
+  const req = request as Request;
+
+  console.error('Server error:', {
+    message: error instanceof Error ? error.message : 'Unknown error',
+    url: req.url,
+    method: req.method,
+  });
+};
