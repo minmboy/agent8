@@ -47,3 +47,4 @@ export { StartGuideMobileIcon } from './StartGuideMobileIcon';
 export { SurvivorsLikeIcon } from './SurvivorsLikeIcon';
 export { ShootEmUpIcon } from './ShootEmUpIcon';
 export { ConnectionLostIcon } from './ConnectionLostIcon';
+export { BranchIndicatorIcon } from './BranchIndicatorIcon';
