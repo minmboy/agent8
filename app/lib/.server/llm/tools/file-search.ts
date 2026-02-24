@@ -41,7 +41,7 @@ export const createFileContentSearchTool = (fileMap: FileMap, orchestration: Orc
       }
 
       if ((beforeLines !== undefined && beforeLines < 0) || (afterLines !== undefined && afterLines < 0)) {
-        return { pattern, systemMessage: '⚠️ Before lines and after lines must be greater than 0.' };
+        return { pattern, systemMessage: '⚠️ Invalid input: beforeLines and afterLines must be ≥ 0' };
       }
 
       const searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
