@@ -24,6 +24,7 @@ export type FileMap = Record<string, Dirent | undefined>;
 export type Orchestration = {
   readSet: Set<string>;
   updatedSet: Set<string>;
+  searchSet: Set<string>;
 };
 
 export const TOOL_ERROR = {
