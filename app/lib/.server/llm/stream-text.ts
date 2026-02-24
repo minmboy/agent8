@@ -48,7 +48,7 @@ export type Messages = UIMessage[];
 export type StreamingOptions = Omit<Parameters<typeof _streamText>[0], 'model' | 'messages' | 'prompt' | 'system'>;
 
 function createOrchestration(): Orchestration {
-  return { readSet: new Set(), updatedSet: new Set() };
+  return { readSet: new Set(), updatedSet: new Set(), searchSet: new Set() };
 }
 
 const logger = createScopedLogger('stream-text');
@@ -198,7 +198,7 @@ export async function streamText(props: {
     // Add file search tools
     combinedTools = {
       ...combinedTools,
-      [TOOL_NAMES.SEARCH_FILE_CONTENTS]: createFileContentSearchTool(files),
+      [TOOL_NAMES.SEARCH_FILE_CONTENTS]: createFileContentSearchTool(files, orchestration),
       [TOOL_NAMES.READ_FILES_CONTENTS]: createFilesReadTool(files, orchestration),
     };
   }
