@@ -50,20 +50,6 @@ async function uploadAttachment(
   return `https://agent8-games.verse8.io/${verse}/${path}/${uniqueFileName}`;
 }
 
-export function isBase64Image(base64String: string): boolean {
-  if (!base64String || !base64String.startsWith('data:')) {
-    return false;
-  }
-
-  const matches = base64String.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-
-  if (!matches || matches.length !== 3) {
-    return false;
-  }
-
-  return true;
-}
-
 async function imageUploadAction({ context, request }: ActionFunctionArgs) {
   try {
     const env = { ...context.cloudflare?.env, ...process.env } as Env;
