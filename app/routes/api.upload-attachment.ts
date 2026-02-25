@@ -32,10 +32,11 @@ async function uploadAttachment(
   externalFormData.append('file', new File([await file.arrayBuffer()], uniqueFileName, { type: file.type }));
   externalFormData.append('path', path);
 
+  const signature = 'bolt-verse-signature';
   const response = await fetch(`${endpoint}/verses/${verse}/files`, {
     method: 'POST',
     headers: {
-      'X-Signature': 'bolt-verse-signature',
+      'X-Signature': signature,
       Authorization: `Bearer ${accessToken}`,
     },
     body: externalFormData,
