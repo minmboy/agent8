@@ -67,7 +67,7 @@ export const Artifact = memo(({ artifactId }: ArtifactProps) => {
             exit={{ height: '0px' }}
             transition={{ duration: 0.15 }}
           >
-            <div className="text-left">
+            <div className="text-left px-3">
               <ActionList actions={actions} />
             </div>
           </motion.div>

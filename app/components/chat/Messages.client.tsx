@@ -45,6 +45,7 @@ interface MessagesProps {
   className?: string;
   isStreaming?: boolean;
   isAborted?: boolean;
+  failedMessageIds?: Set<string>;
   messages?: UIMessage[];
   annotations?: JSONValue[];
   progressAnnotations?: ProgressAnnotation[];
@@ -92,6 +93,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
       id,
       isStreaming = false,
       isAborted = false,
+      failedMessageIds,
       messages = [],
       annotations = [],
       progressAnnotations = [],
@@ -389,6 +391,8 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                                   />
                                 </div>
                               </>
+                            ) : failedMessageIds?.has(messageId ?? '') ? (
+                              <span className="text-heading-xs text-danger-bold">Response Failed</span>
                             ) : isLast && !isAborted ? (
                               <span
                                 className="text-heading-xs"
@@ -434,6 +438,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                         {/* Show Bookmark button for assistant messages with commit hash (only if message has content and not aborted) */}
                         {messageText.trim() !== '' &&
                           !isMessageAborted &&
+                          !failedMessageIds?.has(messageId ?? '') &&
                           role === 'assistant' &&
                           messageId &&
                           (() => {
@@ -566,6 +571,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                         {/* Show Retry button only for the last message (only if message has content and not aborted) */}
                         {messageText.trim() !== '' &&
                           !isMessageAborted &&
+                          !failedMessageIds?.has(messageId ?? '') &&
                           index > 0 &&
                           messages[index - 1]?.role === 'user' &&
                           isLast && (
@@ -598,6 +604,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                         {/* Show View Diff button after Retry (if Retry exists) or after Revert (if no Retry, only if message has content and not aborted) */}
                         {messageText.trim() !== '' &&
                           !isMessageAborted &&
+                          !failedMessageIds?.has(messageId ?? '') &&
                           !isFirstAssistantMessage &&
                           !isSmallViewport && (
                             <Tooltip.Root delayDuration={100}>
@@ -624,39 +631,45 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                           )}
                       </div>
                       <div className="flex items-center">
-                        {messageText.trim() !== '' && !isMessageAborted && isLast && (
-                          <Tooltip.Root delayDuration={100}>
-                            <Tooltip.Trigger asChild>
-                              <CustomButton
-                                variant="primary-text"
-                                size="sm"
-                                onClick={() => {
-                                  // Reset preview URLs to prevent download prompts on mobile
-                                  workbenchStore.resetPreviewUrls();
+                        {messageText.trim() !== '' &&
+                          !isMessageAborted &&
+                          isLast &&
+                          !failedMessageIds?.has(messageId ?? '') && (
+                            <Tooltip.Root delayDuration={100}>
+                              <Tooltip.Trigger asChild>
+                                <CustomButton
+                                  variant="primary-text"
+                                  size="sm"
+                                  onClick={() => {
+                                    // Reset preview URLs to prevent download prompts on mobile
+                                    workbenchStore.resetPreviewUrls();
 
-                                  workbenchStore.runPreview();
+                                    workbenchStore.runPreview();
 
-                                  // On mobile, immediately show preview screen
-                                  if (isSmallViewport) {
-                                    workbenchStore.mobilePreviewMode.set(true);
-                                  }
-                                }}
-                                data-track="editor-response-runpreview"
-                              >
-                                <PlayIcon color="currentColor" size={20} />
-                                Preview
-                              </CustomButton>
-                            </Tooltip.Trigger>
-                            <Tooltip.Portal>
-                              <Tooltip.Content
-                                className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] text-body-md-medium"
-                                side="bottom"
-                              >
-                                Run Preview
-                                <Tooltip.Arrow className="fill-[var(--color-bg-inverse,#F3F5F8)]" />
-                              </Tooltip.Content>
-                            </Tooltip.Portal>
-                          </Tooltip.Root>
+                                    // On mobile, immediately show preview screen
+                                    if (isSmallViewport) {
+                                      workbenchStore.mobilePreviewMode.set(true);
+                                    }
+                                  }}
+                                  data-track="editor-response-runpreview"
+                                >
+                                  <PlayIcon color="currentColor" size={20} />
+                                  Preview
+                                </CustomButton>
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Content
+                                  className="inline-flex items-start rounded-radius-8 bg-[var(--color-bg-inverse,#F3F5F8)] text-[var(--color-text-inverse,#111315)] p-[9.6px] shadow-md z-[9999] text-body-md-medium"
+                                  side="bottom"
+                                >
+                                  Run Preview
+                                  <Tooltip.Arrow className="fill-[var(--color-bg-inverse,#F3F5F8)]" />
+                                </Tooltip.Content>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                          )}
+                        {failedMessageIds?.has(messageId ?? '') && (
+                          <span className="text-body-sm text-tertiary">Please retry your prompt</span>
                         )}
                       </div>
                     </div>
