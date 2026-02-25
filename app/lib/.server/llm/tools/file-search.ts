@@ -7,7 +7,9 @@ import { tool } from 'ai';
 /**
  * Tool for searching file contents with pattern matching (similar to grep)
  */
-export const createFileContentSearchTool = (fileMap: FileMap) => {
+export const createFileContentSearchTool = (fileMap: FileMap, orchestration: Orchestration) => {
+  const searched = orchestration.searchSet;
+
   return tool({
     description:
       'READ ONLY TOOL : Search file contents for specific patterns or text, similar to grep. Use this tool when you need to find specific code patterns, variable definitions, or text within files. These tools only provide read functionality and cannot change the state of files. Changes to files should be performed through output, not tool calls.',
@@ -34,19 +36,44 @@ export const createFileContentSearchTool = (fileMap: FileMap) => {
       beforeLines?: number;
       afterLines?: number;
     }) => {
-      const results = searchFileContentsByPattern(fileMap, pattern, caseSensitive, beforeLines, afterLines);
+      if (!pattern) {
+        return { pattern, systemMessage: '⚠️ Pattern is empty. Please provide a valid pattern to search for.' };
+      }
+
+      if ((beforeLines !== undefined && beforeLines < 0) || (afterLines !== undefined && afterLines < 0)) {
+        return { pattern, systemMessage: '⚠️ Invalid input: beforeLines and afterLines must be ≥ 0' };
+      }
+
+      const searchPattern = caseSensitive ? pattern : pattern.toLowerCase();
+
+      if (searched.has(searchPattern)) {
+        return {
+          pattern,
+          systemMessage: `⚠️ Pattern "${searchPattern}" was already searched in this conversation. Please refer to the previous search results instead of searching again.`,
+        };
+      }
+
+      searched.add(searchPattern);
+
+      let searchResults: ReturnType<typeof searchFileContentsByPattern>;
+
+      try {
+        searchResults = searchFileContentsByPattern(fileMap, pattern, caseSensitive, beforeLines, afterLines);
+      } catch {
+        return { pattern, totalMatches: 0, matchingFiles: [] };
+      }
+
+      const sanitizedSearchResults = searchResults
+        .map((fileResult) => ({
+          path: fileResult.path.replace(`${WORK_DIR}/`, ''),
+          matches: fileResult.matches.filter((match) => match.index >= 0),
+        }))
+        .filter((fileResult) => fileResult.path.length > 0 && fileResult.matches.length > 0);
 
       return {
         pattern,
-        totalMatches: results.length,
-        matchingFiles: results.map((result) => ({
-          path: result.path.replace(WORK_DIR + '/', ''),
-          matches: result.matches.map((match) => ({
-            line: match.line,
-            text: match.text,
-            contextLines: match.contextLines,
-          })),
-        })),
+        totalMatches: sanitizedSearchResults.length,
+        matchingFiles: sanitizedSearchResults,
       };
     },
   });

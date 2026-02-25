@@ -13,6 +13,7 @@ interface ErrorNotificationPayload {
   userId?: string;
   prompt?: string;
   elapsedTime?: number;
+  sentryEventId?: string;
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -80,7 +81,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const messageTimestamp = mainResult.ts;
 
     // If there are additional details, send them as a follow-up message
-    const hasAdditionalInfo = payload.error || payload.userAgent || payload.url || payload.userId;
+    const hasAdditionalInfo =
+      payload.error || payload.userAgent || payload.url || payload.userId || payload.sentryEventId;
 
     if (hasAdditionalInfo) {
       // Small delay to ensure messages appear in order
@@ -143,6 +145,25 @@ export async function action({ request, context }: ActionFunctionArgs) {
             fields: userFields,
           });
         }
+      }
+
+      // Build Sentry link if event ID is available
+      if (payload.sentryEventId) {
+        const sentryOrg = env.SENTRY_ORG;
+        const sentryProject = env.SENTRY_PROJECT;
+        let sentryText = `*Sentry Event ID:* \`${payload.sentryEventId}\``;
+
+        if (sentryOrg && sentryProject) {
+          sentryText = `*Sentry Event:* <https://${sentryOrg}.sentry.io/issues/?project=${sentryProject}&query=${payload.sentryEventId}|${payload.sentryEventId}>`;
+        }
+
+        detailBlocks.push({
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: sentryText,
+          },
+        });
       }
 
       if (detailBlocks.length > 0) {

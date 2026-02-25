@@ -38,6 +38,8 @@ interface Env {
   GITLAB_TOKEN: string;
   SLACK_ALERT_BOT_TOKEN: string;
   SLACK_ALERT_CHANNEL_ID: string;
+  SENTRY_ORG: string;
+  SENTRY_PROJECT: string;
   VITE_TURNSTILE_SITE_KEY: string;
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_ENABLED: string;

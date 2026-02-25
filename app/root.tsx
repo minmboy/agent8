@@ -1,6 +1,6 @@
 import { useStore } from '@nanostores/react';
 import type { LinksFunction } from '@remix-run/cloudflare';
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from '@remix-run/react';
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useRouteError, isRouteErrorResponse } from '@remix-run/react';
 import tailwindReset from '@unocss/reset/tailwind-compat.css?url';
 import { themeStore } from './lib/stores/theme';
 import { stripIndents } from './utils/stripIndent';
@@ -11,6 +11,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
 import { initCaptureService } from './utils/captureService';
 import { TurnstileProvider } from './components/turnstile/TurnstileProvider';
+import { captureRemixErrorBoundaryError, withSentry } from '@sentry/remix';
 
 import reactToastifyStyles from 'react-toastify/dist/ReactToastify.css?url';
 import globalStyles from './styles/index.scss?url';
@@ -135,7 +136,110 @@ export function Layout({ children }: { children: React.ReactNode }) {
 import { logStore } from './lib/stores/logs';
 import { initializeSoundSystem } from './utils/sound';
 
-export default function App() {
+// ErrorBoundary for catching and reporting React errors to Sentry
+export function ErrorBoundary() {
+  const error = useRouteError();
+
+  // Capture error in Sentry
+  captureRemixErrorBoundaryError(error);
+
+  // Handle different error types
+  if (isRouteErrorResponse(error)) {
+    return (
+      <html lang="en" data-theme="dark">
+        <head>
+          <meta charSet="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>
+            {error.status} - {error.statusText}
+          </title>
+          <Links />
+        </head>
+        <body>
+          <div className="flex items-center justify-center min-h-screen bg-bolt-elements-background-depth-1">
+            <div className="text-center p-8">
+              <h1 className="text-6xl font-bold text-bolt-elements-textPrimary mb-4">{error.status}</h1>
+              <p className="text-xl text-bolt-elements-textSecondary mb-2">{error.statusText}</p>
+              {error.data && <p className="text-sm text-bolt-elements-textTertiary mt-4">{error.data}</p>}
+              <a
+                href="/"
+                className="mt-8 inline-block px-6 py-3 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text rounded-lg hover:bg-bolt-elements-button-primary-backgroundHover transition-colors"
+              >
+                Go to Home
+              </a>
+            </div>
+          </div>
+          <Scripts />
+        </body>
+      </html>
+    );
+  }
+
+  // Handle unexpected errors
+  let errorMessage = 'An unexpected error occurred';
+  let errorDetails = '';
+
+  if (error instanceof Error) {
+    errorMessage = error.message;
+    errorDetails = error.stack || '';
+  }
+
+  return (
+    <html lang="en" data-theme="dark">
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Application Error</title>
+        <Links />
+      </head>
+      <body>
+        <div className="flex items-center justify-center min-h-screen bg-bolt-elements-background-depth-1">
+          <div className="text-center p-8 max-w-2xl">
+            <div className="mb-6">
+              <svg className="w-16 h-16 mx-auto text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-bolt-elements-textPrimary mb-4">Oops! Something went wrong</h1>
+            <p className="text-bolt-elements-textSecondary mb-6">
+              We apologize for the inconvenience. The error has been reported to our team.
+            </p>
+            {import.meta.env.MODE === 'development' && (
+              <div className="text-left bg-bolt-elements-background-depth-2 p-4 rounded-lg mb-6">
+                <p className="text-sm text-bolt-elements-textSecondary font-mono mb-2">{errorMessage}</p>
+                {errorDetails && (
+                  <pre className="text-xs text-bolt-elements-textTertiary overflow-auto max-h-60">{errorDetails}</pre>
+                )}
+              </div>
+            )}
+            <div className="flex gap-4 justify-center">
+              <a
+                href="/"
+                className="px-6 py-3 bg-bolt-elements-button-primary-background text-bolt-elements-button-primary-text rounded-lg hover:bg-bolt-elements-button-primary-backgroundHover transition-colors"
+              >
+                Go to Home
+              </a>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-6 py-3 bg-bolt-elements-button-secondary-background text-bolt-elements-button-secondary-text rounded-lg hover:bg-bolt-elements-button-secondary-backgroundHover transition-colors"
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+function App() {
   const theme = useStore(themeStore);
 
   useEffect(() => {
@@ -156,3 +260,6 @@ export default function App() {
     </Layout>
   );
 }
+
+// Wrap App with Sentry for performance monitoring
+export default withSentry(App);

@@ -28,6 +28,7 @@ import {
   PROMPT_COOKIE_KEY,
   PROVIDER_LIST,
   WORK_DIR,
+  MAX_PROJECT_SIZE_MB,
 } from '~/utils/constants';
 import { cubicEasingFn } from '~/utils/easings';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
@@ -42,15 +43,17 @@ import type { ProviderInfo } from '~/types/model';
 import { useSearchParams } from '@remix-run/react';
 import { createSampler } from '~/utils/sampler';
 import { selectStarterTemplate, getZipTemplates } from '~/utils/selectStarterTemplate';
+import { stripTopLevelDirectory } from '~/utils/zipUtils';
 import { logStore } from '~/lib/stores/logs';
 import { MESSAGE_ANNOTATIONS } from '~/utils/constants';
 import { streamingState, shouldPlaySoundOnPreviewReady } from '~/lib/stores/streaming';
 import { restoreEventStore, clearRestoreEvent } from '~/lib/stores/restore';
-import { convertFileMapToFileSystemTree } from '~/utils/fileUtils';
+import { convertFileMapToFileSystemTree, getFileMapSize } from '~/utils/fileUtils';
 import type { Template } from '~/types/template';
 import { playCompletionSound } from '~/utils/sound';
 import {
   commitChanges,
+  commitFiles,
   fetchProjectFiles,
   forkProject,
   getCommit,
@@ -67,6 +70,7 @@ import { get2DStarterPrompt, get3DStarterPrompt } from '~/lib/common/prompts/age
 import { stripMetadata } from './UserMessage';
 import type { ProgressAnnotation } from '~/types/context';
 import { handleChatError, type HandleChatErrorOptions } from '~/utils/errorNotification';
+import { sentryCrumb } from '~/lib/sentry';
 import { getElapsedTime } from '~/utils/performance';
 import ToastContainer from '~/components/ui/ToastContainer';
 import { useVersionFeature } from '~/lib/hooks/useVersionFeature';
@@ -431,7 +435,6 @@ export const ChatImpl = memo(
     loading,
     description,
     initialMessages,
-    setInitialMessages,
     revertTo,
     hasMore,
     loadBefore,
@@ -689,6 +692,12 @@ export const ChatImpl = memo(
         // Custom fetch to add Turnstile token and preserve HTTP status codes
         fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
           const turnstileHeaders = await getTurnstileHeaders();
+          const { model: currentModel, provider: currentProvider } = chatStateRef.current;
+
+          sentryCrumb('chat', 'LLM API request started', {
+            model: currentModel,
+            provider: currentProvider?.name,
+          });
 
           const response = await fetch(input, {
             ...init,
@@ -700,6 +709,7 @@ export const ChatImpl = memo(
 
           if (!response.ok) {
             const serverMessage = await response.text();
+            sentryCrumb('chat', 'LLM API request failed', { status: response.status }, 'error');
             throw new FetchError((serverMessage ?? 'unknown error').trim(), response.status);
           }
 
@@ -1280,7 +1290,7 @@ export const ChatImpl = memo(
         const temResp = await fetchTemplateFromAPI(
           starterTemplateResp.template!,
           starterTemplateResp.title,
-          starterTemplateResp.projectRepo,
+          starterTemplateResp.projectRepo || 'basic-project',
           signal,
         ).catch((e) => {
           checkAborted();
@@ -1758,6 +1768,15 @@ export const ChatImpl = memo(
           return;
         }
 
+        // Track user message in Sentry breadcrumbs
+        sentryCrumb('chat', 'User sent message', {
+          model,
+          provider: provider?.name,
+          isFirstChat: wasFirstChat,
+          hasAttachments: attachmentList.length > 0,
+          messageLength: messageContent.length,
+        });
+
         lastUserPromptRef.current = messageContent;
 
         if (chatStarted && Object.keys(files).length === 0) {
@@ -2052,79 +2071,6 @@ export const ChatImpl = memo(
       Cookies.set('SelectedProvider', newProvider.name, { expires: 1 });
     };
 
-    const handleTemplateImport = async (source: { type: 'github' | 'zip'; title: string }, files: FileMap) => {
-      const startTime = performance.now();
-
-      try {
-        setFakeLoading(true);
-        runAnimation();
-
-        const containerInstance = await workbench.container;
-        await containerInstance.mount(convertFileMapToFileSystemTree(files));
-
-        if (!chatStarted) {
-          repoStore.set({
-            name: source.title,
-            path: '',
-            title: source.title,
-            latestCommitHash: '',
-            createdAt: '',
-          });
-
-          // GitLab persistence가 비활성화된 경우에만 즉시 URL 변경
-          if (!isEnabledGitbasePersistence) {
-            changeChatUrl(source.title, { replace: true });
-          }
-
-          const messages = [
-            {
-              id: `1-${new Date().getTime()}`,
-              role: 'user',
-              parts: [
-                {
-                  type: 'text',
-                  text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n[Attachments: ${JSON.stringify(
-                    attachmentList,
-                  )}]\n\nI want to import the following files from the ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`,
-                },
-              ],
-            },
-            {
-              id: `2-${new Date().getTime()}`,
-              role: 'assistant',
-              parts: [
-                {
-                  type: 'text',
-                  text: `I will import the files from the ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`,
-                },
-              ],
-            },
-          ] as UIMessage[];
-
-          setInitialMessages(messages);
-
-          setChatStarted(true);
-          workbench.showWorkbench.set(true);
-          sendEventToParent('EVENT', { name: 'START_EDITING' });
-        }
-
-        toast.success(`Successfully imported ${source.type === 'github' ? 'repository' : 'project'}: ${source.title}`);
-      } catch (error) {
-        processError(`Failed to import ${source.type === 'github' ? 'repository' : 'project'}`, startTime, {
-          error: error instanceof Error ? error : String(error),
-          context: 'handleTemplateImport',
-          prompt: undefined, // Prompt not required (not a chat request)
-        });
-      } finally {
-        setFakeLoading(false);
-      }
-    };
-
-    const handleProjectZipImport = async (title: string, zipFile: File) => {
-      const { fileMap } = await getZipTemplates(zipFile, title);
-      await handleTemplateImport({ type: 'zip', title }, fileMap);
-    };
-
     const handleFork = async (message: UIMessage) => {
       const startTime = performance.now();
       const repo = repoStore.get();
@@ -2179,6 +2125,102 @@ export const ChatImpl = memo(
         });
 
         return;
+      }
+    };
+
+    const handleProjectZipImport = async (title: string, zipFile: File) => {
+      const startTime = performance.now();
+
+      try {
+        // Extract and mount files to container
+        const { fileMap } = await getZipTemplates(zipFile, title);
+
+        // Validate extracted file size
+        if (getFileMapSize(fileMap, 'MB') >= MAX_PROJECT_SIZE_MB) {
+          throw new AppError(`Project size exceeds ${MAX_PROJECT_SIZE_MB}MB limit. Please reduce the file size.`, {
+            sendChatError: false,
+          });
+        }
+
+        setFakeLoading(true);
+        runAnimation();
+
+        const containerInstance = await workbench.container;
+        const normalizedFileMap = stripTopLevelDirectory(fileMap);
+        await containerInstance.mount(convertFileMapToFileSystemTree(normalizedFileMap));
+
+        const isNewProject = !chatStarted;
+
+        // Initialize repository for new projects
+        if (isNewProject) {
+          repoStore.set({
+            name: title,
+            path: '',
+            title,
+            latestCommitHash: '',
+            createdAt: '',
+          });
+        }
+
+        const commitMessage = `Import project: ${title}`;
+        let toastMessage = '';
+        let isCommitFailed = false;
+
+        // Persist to storage
+        if (isEnabledGitbasePersistence) {
+          try {
+            const currentFiles = workbench.files.get();
+            workbench.files.set({ ...currentFiles, ...normalizedFileMap });
+
+            await commitFiles(normalizedFileMap, commitMessage, isNewProject);
+            toastMessage = `Successfully imported project: ${title}`;
+          } catch (error) {
+            // Continue local work even if commit fails
+            isCommitFailed = true;
+
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error(`Commit failed: ${errorMessage}`);
+            toastMessage = `Failed to import project: ${errorMessage}`;
+            changeChatUrl(title, { replace: true });
+          }
+        } else {
+          changeChatUrl(title, { replace: true });
+        }
+
+        // Update UI
+        if (isNewProject) {
+          setChatStarted(true);
+          workbench.showWorkbench.set(true);
+          sendEventToParent('EVENT', { name: 'START_EDITING' });
+        } else {
+          const assistantMessage: UIMessage = {
+            id: `1-${new Date().getTime()}`,
+            role: 'assistant',
+            parts: [
+              {
+                type: 'text',
+                text: commitMessage,
+              },
+            ],
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+
+        if (isCommitFailed) {
+          toast.warning(toastMessage);
+        } else {
+          toast.success(toastMessage);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error(`Failed to import project: ${errorMessage}`);
+        processError(`Failed to import project: ${errorMessage}`, startTime, {
+          error: error instanceof Error ? error : String(error),
+          context: 'handleProjectZipImport',
+          prompt: undefined,
+        });
+      } finally {
+        setFakeLoading(false);
       }
     };
 

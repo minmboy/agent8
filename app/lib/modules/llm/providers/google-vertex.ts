@@ -55,6 +55,12 @@ export default class GoogleVertexProvider extends BaseProvider {
       maxTokenAllowed: 65535,
     },
     {
+      name: 'gemini-3.1-pro-preview',
+      label: 'Gemini 3.1 Pro',
+      provider: PROVIDER_NAMES.GOOGLE_VERTEX_AI,
+      maxTokenAllowed: 65535,
+    },
+    {
       name: 'gemini-3-flash-preview',
       label: 'Gemini 3 Flash',
       provider: PROVIDER_NAMES.GOOGLE_VERTEX_AI,

@@ -46,6 +46,7 @@ import {
   StartGuideMobileIcon,
   StartGuideDesktopIcon,
 } from '~/components/ui/Icons';
+import { useSearchParams } from '@remix-run/react';
 
 const TEXTAREA_MIN_HEIGHT = 40;
 const MAX_ATTACHMENTS = 10;
@@ -229,6 +230,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const isSmallViewportForWorkbench = useViewport(MOBILE_BREAKPOINT); // When workbench is visible
     const isSmallViewportForChat = useViewport(CHAT_MOBILE_BREAKPOINT); // When workbench is not mounted yet
     const isXlViewport = useViewport(XL_BREAKPOINT); // XL breakpoint for compact mode
+    const [searchParams] = useSearchParams();
+    const isEmbedMode = searchParams.get('mode') === 'embed';
 
     // Adjust textarea max height based on screen size (compact mode for mobile/tablet pre-chat)
     let TEXTAREA_MAX_HEIGHT = 135; // Default (desktop or tablet)
@@ -310,31 +313,65 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     useEffect(() => {
       const textarea = textareaRef?.current;
 
-      if (textarea) {
-        // Use requestAnimationFrame to ensure we measure after browser paint
-        requestAnimationFrame(() => {
-          // Reset height to auto to get accurate scrollHeight
-          textarea.style.height = 'auto';
-
-          // Get the actual content height
-          const contentHeight = textarea.scrollHeight;
-
-          // Calculate new height (constrained between min and max)
-          const newHeight = Math.min(Math.max(contentHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
-
-          // Apply the new height with !important to override any CSS
-          textarea.style.setProperty('height', `${newHeight}px`, 'important');
-
-          // Only show scrollbar when content exceeds max height
-          const shouldScroll = contentHeight > TEXTAREA_MAX_HEIGHT;
-          textarea.style.setProperty('overflow-y', shouldScroll ? 'auto' : 'hidden', 'important');
-
-          // Add debug data attributes
-          textarea.setAttribute('data-max-height', String(TEXTAREA_MAX_HEIGHT));
-          textarea.setAttribute('data-calculated-height', String(newHeight));
-          textarea.setAttribute('data-should-scroll', String(shouldScroll));
-        });
+      if (!textarea) {
+        return undefined;
       }
+
+      // Use requestAnimationFrame to ensure we measure after browser paint
+      const rafId = requestAnimationFrame(() => {
+        // Save current scroll position and selection BEFORE any changes
+        const currentScrollTop = textarea.scrollTop;
+        const currentScrollHeight = textarea.scrollHeight;
+        const currentClientHeight = textarea.clientHeight;
+        const currentSelectionStart = textarea.selectionStart;
+        const currentSelectionEnd = textarea.selectionEnd;
+
+        // Check if user was at the bottom BEFORE height change (within 5px threshold)
+        const wasAtBottom = currentScrollTop + currentClientHeight >= currentScrollHeight - 5;
+
+        // Reset height to auto to get accurate scrollHeight
+        textarea.style.height = 'auto';
+
+        // Get the actual content height
+        const contentHeight = textarea.scrollHeight;
+
+        // Calculate new height (constrained between min and max)
+        const newHeight = Math.min(Math.max(contentHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT);
+
+        // Apply the new height with !important to override any CSS
+        textarea.style.setProperty('height', `${newHeight}px`, 'important');
+
+        // Only show scrollbar when content exceeds max height
+        const shouldScroll = contentHeight > TEXTAREA_MAX_HEIGHT;
+        textarea.style.setProperty('overflow-y', shouldScroll ? 'auto' : 'hidden', 'important');
+
+        // Restore scroll position
+        if (shouldScroll) {
+          if (wasAtBottom) {
+            // If user was at bottom, keep them at bottom (natural typing behavior)
+            textarea.scrollTop = textarea.scrollHeight;
+          } else {
+            // If user was scrolled up (editing middle content), maintain their position
+            textarea.scrollTop = currentScrollTop;
+          }
+        } else {
+          // If content fits within max height, restore previous scroll position
+          textarea.scrollTop = currentScrollTop;
+        }
+
+        // Restore cursor position
+        textarea.setSelectionRange(currentSelectionStart, currentSelectionEnd);
+
+        // Add debug data attributes
+        textarea.setAttribute('data-max-height', String(TEXTAREA_MAX_HEIGHT));
+        textarea.setAttribute('data-calculated-height', String(newHeight));
+        textarea.setAttribute('data-should-scroll', String(shouldScroll));
+      });
+
+      // Cleanup function to cancel animation frame if component unmounts
+      return () => {
+        cancelAnimationFrame(rafId);
+      };
     }, [input, TEXTAREA_MAX_HEIGHT, chatStarted, isXlViewport]);
 
     // State to store scroll container ref
@@ -790,7 +827,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               'w-[var(--chat-width)]': chatStarted && !isSmallViewport,
               '!w-full !mr-0': isSmallViewport && !hideChatForMobilePreview,
               hidden: hideChatForMobilePreview,
-              'relative overflow-hidden !px-4 md:!px-5 xl:justify-center xl:h-full': !chatStarted,
+              'relative overflow-hidden !px-4 md:!px-5 xl:h-full': !chatStarted,
               'overflow-y-auto': chatStarted,
               [styles.chatStarted]: chatStarted && !isSmallViewport,
             })}
@@ -799,7 +836,12 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
               <MainBackground zIndex={1} isMobileView={isMobileView} opacity={0.8} chatStarted={chatStarted} />
             )}
             {!chatStarted && (
-              <div className="flex flex-col items-center w-full mx-auto md:w-[727px] xl:w-full xl:max-h-[85svh] xl:min-h-0 xl:max-w-[1400px] mt-[45px] xl:mt-0">
+              <div
+                className={classNames(
+                  'flex flex-col items-center w-full mx-auto md:w-[727px] xl:w-full xl:flex-1 xl:min-h-0',
+                  isEmbedMode ? 'mt-0' : 'mt-[12px]',
+                )}
+              >
                 {/* Background Image */}
                 <div
                   className={`absolute top-0 left-1/2 bottom-0 top-0 translate-x-[-50%] xl:inset-0 xl:translate-x-0 w-[890px] h-[426px] md:w-[1280px] md:h-[612px] xl:w-auto xl:h-auto pointer-events-none overflow-hidden z-0 bg-[url('/background-image.webp')] bg-cover bg-no-repeat opacity-50 xl:opacity-60`}
@@ -810,10 +852,10 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       : 'slideDownBackgroundDesktop 1s ease-in-out',
                   }}
                 />
-                <div id="intro" className="max-w-chat-before-start mx-auto text-center z-2">
+                <div id="intro" className="flex-shrink-0 max-w-chat-before-start mx-auto text-center z-2">
                   <div className="flex justify-center">
                     <span
-                      className="text-heading-md xl:text-heading-4xl xl:elevation-shadow-3"
+                      className="text-heading-md md:text-heading-2xl xl:text-heading-4xl xl:elevation-shadow-3"
                       style={{
                         background: 'linear-gradient(90deg, var(--color-text-primary, #FFF) 0%, #72E7F8 100%)',
                         backgroundClip: 'text',
@@ -821,24 +863,15 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                         WebkitTextFillColor: 'transparent',
                       }}
                     >
-                      <span className="xl:hidden">What do you want to create?</span>
-                      <span className="hidden xl:block">Game Creation, Simplified</span>
+                      <span className="md:hidden">What do you want to create?</span>
+                      <span className="hidden md:block">Game Creation, Simplified</span>
                     </span>
                   </div>
                 </div>
-                <span className="flex justify-center text-primary xl:text-secondary text-body-lg-medium text-center xl:text-heading-sm self-stretch z-2 mt-1 xl:mt-2">
-                  <span className="xl:hidden">Start with an example — or write your own</span>
-                  <span className="hidden xl:block">
-                    What do you want to create? Start with an example — or write your own
-                  </span>
-                </span>
-                <div className="relative z-2 mt-5 md:mt-4 w-full md:relative rounded-[8px] xl:rounded-[24px] xl:max-w-[min(1400px,calc(60svh*16/9))] xl:min-h-[500px] overflow-hidden">
-                  <div className="md:absolute md:left-[1px] md:right-[1px] md:top-[1px] md:z-1 flex flex-col md:items-center md:justify-center gap-2 md:flex-row md:gap-4 xl:gap-7 rounded-[8px] xl:rounded-t-[24px] overflow-hidden md:bg-[linear-gradient(180deg,_#000_0%,_rgba(0,0,0,0.98)_4.7%,_rgba(0,0,0,0.96)_8.9%,_rgba(0,0,0,0.93)_12.8%,_rgba(0,0,0,0.90)_16.56%,_rgba(0,0,0,0.86)_20.37%,_rgba(0,0,0,0.82)_24.4%,_rgba(0,0,0,0.77)_28.83%,_rgba(0,0,0,0.71)_33.84%,_rgba(0,0,0,0.65)_39.6%,_rgba(0,0,0,0.57)_46.3%,_rgba(0,0,0,0.48)_54.1%,_rgba(0,0,0,0.38)_63.2%,_rgba(0,0,0,0.27)_73.76%,_rgba(0,0,0,0.14)_85.97%,_rgba(0,0,0,0.00)_100%)]">
+                <div className="w-full md:w-auto relative z-2 mt-4 md:relative md:aspect-[16/9] rounded-[8px] xl:flex-1 xl:min-h-0 xl:min-w-0 xl:max-w-full xl:rounded-[24px] overflow-hidden">
+                  <div className="md:absolute md:left-[1px] md:right-[1px] md:top-[1px] md:z-1 flex flex-col md:items-center md:justify-center gap-2 md:flex-row md:gap-4 xl:gap-5 rounded-[8px] xl:rounded-t-[24px] overflow-hidden md:bg-[linear-gradient(180deg,_#000_0%,_rgba(0,0,0,0.98)_4.7%,_rgba(0,0,0,0.96)_8.9%,_rgba(0,0,0,0.93)_12.8%,_rgba(0,0,0,0.90)_16.56%,_rgba(0,0,0,0.86)_20.37%,_rgba(0,0,0,0.82)_24.4%,_rgba(0,0,0,0.77)_28.83%,_rgba(0,0,0,0.71)_33.84%,_rgba(0,0,0,0.65)_39.6%,_rgba(0,0,0,0.57)_46.3%,_rgba(0,0,0,0.48)_54.1%,_rgba(0,0,0,0.38)_63.2%,_rgba(0,0,0,0.27)_73.76%,_rgba(0,0,0,0.14)_85.97%,_rgba(0,0,0,0.00)_100%)]">
                     {Object.entries(VIDEO_GUIDE_TABS).map(([key, value]) => (
-                      <div
-                        key={key}
-                        className="grid grid-cols-6 gap-2 md:flex md:items-center md:gap-2 md:pt-3 xl:gap-3"
-                      >
+                      <div key={key} className="grid grid-cols-6 gap-2 md:flex md:items-center md:gap-2 md:pt-3">
                         <value.icon size={28} color="#99A2B0" className="hidden xl:block xl:flex-shrink-0" />
                         {Object.entries(value.list).map(([listKey, listValue], listIndex) => (
                           <button
@@ -885,7 +918,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     {selectedVideoTab.type === 'mobile' && (
                       <>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-black/80 backdrop-blur-[10px] pointer-events-none rounded-[8px] xl:rounded-[24px] overflow-hidden" />
-                        <div className="absolute top-[-1px] bottom-[-1px] left-1/2 md:top-[52px] md:bottom-[86px] xl:top-[10.7%] xl:bottom-[18%] -translate-x-1/2 elevation-light-3 aspect-[266/473] rounded-[8px] overflow-hidden">
+                        <div className="absolute top-[-1px] bottom-[-1px] left-1/2 md:h-[75%] md:top-[52px] xl:top-[56px] -translate-x-1/2 elevation-light-3 aspect-[266/473] rounded-[8px] overflow-hidden">
                           <video
                             ref={mobileVideoRef}
                             autoPlay
@@ -920,7 +953,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             )}
 
             <div
-              className={classNames(`pt-0 pt-4 relative`, {
+              className={classNames(`pt-4 relative flex-shrink-0`, {
                 'h-full flex flex-col': chatStarted,
                 'md:pb-[100px]': !chatStarted,
                 'md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
@@ -1007,6 +1040,16 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     />
                   )}
                 </div>
+                {!chatStarted && (
+                  <div className="rounded-t-[16px] pb-[20px] -mb-8 bg-gradient-to-r from-[#72E7F8] to-[#FFD876] w-full tablet:max-w-chat-before-start mx-auto">
+                    <p className="py-2 text-heading-2xs text-inverse text-center">
+                      <span className="md:hidden">Start with an example — or write your own</span>
+                      <span className="hidden md:block">
+                        What do you want to create? Start with an example — or write your own
+                      </span>
+                    </p>
+                  </div>
+                )}
                 <div
                   className={classNames('flex flex-col self-stretch px-4 pt-[6px] pb-4 relative w-full mx-auto', {
                     'tablet:max-w-chat': chatStarted,
@@ -1289,7 +1332,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   repeatType: 'loop',
                 }}
               >
-                <ChevronDoubleDownIcon size={24} color="rgba(255, 255, 255, 0.4)" />
+                <ChevronDoubleDownIcon size={24} color="#fff" />
               </motion.div>
             )}
           </div>

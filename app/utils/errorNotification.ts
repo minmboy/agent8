@@ -1,6 +1,7 @@
 import { createScopedLogger } from '~/utils/logger';
 import { toast } from 'react-toastify';
 import { getErrorFilter } from '~/constants/errorFilters';
+import * as Sentry from '@sentry/remix';
 
 const logger = createScopedLogger('ErrorNotificationUtil');
 
@@ -14,6 +15,7 @@ interface ErrorNotificationOptions {
   elapsedTime?: number;
   process?: string;
   metadata?: Record<string, any>;
+  sentryEventId?: string;
 }
 
 export async function sendErrorNotification(options: ErrorNotificationOptions): Promise<void> {
@@ -71,6 +73,7 @@ export async function sendErrorNotification(options: ErrorNotificationOptions): 
       userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : undefined,
       url: typeof window !== 'undefined' ? window.location.href : undefined,
       userId: options.userId,
+      sentryEventId: options.sentryEventId,
     };
 
     const response = await fetch('/api/error-notification', {
@@ -101,6 +104,7 @@ export async function sendChatErrorWithToastMessage(
   elapsedTime?: number,
   process?: string,
   metadata?: Record<string, any>,
+  sentryEventId?: string,
 ): Promise<void> {
   const context = `Chat - ${functionContext || 'Unknown function'}`;
 
@@ -112,6 +116,7 @@ export async function sendChatErrorWithToastMessage(
     elapsedTime,
     process,
     metadata,
+    sentryEventId,
   });
 }
 
@@ -127,7 +132,7 @@ export interface HandleChatErrorOptions {
   metadata?: Record<string, any>;
 }
 
-// Comprehensive error handler that handles both toast and Slack notification
+// Comprehensive error handler that handles toast, Slack notification, and Sentry
 export function handleChatError(message: string, options?: HandleChatErrorOptions): void {
   const {
     error,
@@ -156,12 +161,50 @@ export function handleChatError(message: string, options?: HandleChatErrorOption
     }
   }
 
+  // Send to Sentry (only if not filtered) and capture event ID
+  let sentryEventId: string | undefined;
+
+  if (!filter?.skipReport) {
+    Sentry.withScope((scope) => {
+      scope.setTag('error.context', context || 'unknown');
+      scope.setTag('error.process', process || 'chat');
+      scope.setLevel(toastType === 'error' ? 'error' : 'warning');
+
+      if (prompt) {
+        scope.setExtra('prompt', prompt.substring(0, MAX_PROMPT_LENGTH));
+      }
+
+      if (elapsedTime) {
+        scope.setExtra('elapsedTime', elapsedTime);
+      }
+
+      if (metadata) {
+        scope.setExtra('metadata', metadata);
+      }
+
+      if (error instanceof Error) {
+        sentryEventId = Sentry.captureException(error);
+      } else if (typeof error === 'string') {
+        sentryEventId = Sentry.captureException(new Error(error));
+      } else {
+        sentryEventId = Sentry.captureMessage(displayMessage, 'error');
+      }
+    });
+  }
+
   // Send Slack notification only if error is not filtered and sendChatError is true (don't await to avoid blocking UI)
   if (!filter?.skipReport && sendChatError) {
-    sendChatErrorWithToastMessage(displayMessage, error, context, prompt, elapsedTime, process, metadata).catch(
-      (notificationError) => {
-        logger.error('Failed to send error notification for:', displayMessage, notificationError);
-      },
-    );
+    sendChatErrorWithToastMessage(
+      displayMessage,
+      error,
+      context,
+      prompt,
+      elapsedTime,
+      process,
+      metadata,
+      sentryEventId,
+    ).catch((notificationError) => {
+      logger.error('Failed to send error notification for:', displayMessage, notificationError);
+    });
   }
 }

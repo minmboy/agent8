@@ -165,7 +165,7 @@ export class FilesStore {
     container.fs.watchPaths(
       {
         include: [`${WORK_DIR}/**`],
-        exclude: ['**/node_modules', '.git'],
+        exclude: ['**/node_modules', '**/.git'],
         includeContent: true,
         ignoreInitial: false,
       },

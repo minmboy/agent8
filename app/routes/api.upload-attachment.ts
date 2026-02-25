@@ -1,10 +1,9 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { v4 as uuidv4 } from 'uuid';
+import { withV8AuthUser, type ContextUser } from '~/lib/verse8/middleware';
 import { ATTACHMENT_EXTS } from '~/utils/constants';
 
-export async function action(args: ActionFunctionArgs) {
-  return imageUploadAction(args);
-}
+export const action = withV8AuthUser(imageUploadAction, { checkCredit: true });
 
 export interface UploadResult {
   success: boolean;
@@ -12,7 +11,12 @@ export interface UploadResult {
   error?: string;
 }
 
-export async function uploadAttachment(file: File, path: string, verse: string): Promise<UploadResult> {
+export async function uploadAttachment(
+  file: File,
+  path: string,
+  verse: string,
+  accessToken: string,
+): Promise<UploadResult> {
   try {
     if (!file || !path || !verse) {
       throw new Error('Missing required fields: file, path, or verse');
@@ -38,6 +42,7 @@ export async function uploadAttachment(file: File, path: string, verse: string):
       method: 'POST',
       headers: {
         'X-Signature': signature,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: externalFormData,
     });
@@ -75,8 +80,17 @@ export function isBase64Image(base64String: string): boolean {
 
   return true;
 }
-export async function uploadBase64Image(base64String: string, path: string, verse: string): Promise<UploadResult> {
+export async function uploadBase64Image(
+  base64String: string,
+  path: string,
+  verse: string,
+  accessToken: string,
+): Promise<UploadResult> {
   try {
+    if (!accessToken) {
+      throw new Error('Access token is required');
+    }
+
     // Validate base64 string
     if (!base64String || !base64String.startsWith('data:')) {
       throw new Error('Invalid base64 image format');
@@ -126,7 +140,7 @@ export async function uploadBase64Image(base64String: string, path: string, vers
     const file = new File([blob], `${shortHash}.${extension}`, { type: mimeType });
 
     // Call uploadImage function
-    return await uploadAttachment(file, path, verse);
+    return await uploadAttachment(file, path, verse, accessToken);
   } catch (error: any) {
     console.error('Error uploading base64 image:', error);
     return {
@@ -136,7 +150,7 @@ export async function uploadBase64Image(base64String: string, path: string, vers
   }
 }
 
-async function imageUploadAction({ request }: ActionFunctionArgs) {
+async function imageUploadAction({ context, request }: ActionFunctionArgs) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -150,7 +164,14 @@ async function imageUploadAction({ request }: ActionFunctionArgs) {
       });
     }
 
-    const result = await uploadAttachment(file, path, verse);
+    const user = context?.user as ContextUser;
+
+    const result = await uploadAttachment(
+      file,
+      path,
+      path === 'chat-uploads' ? user.walletAddress : verse,
+      user.accessToken,
+    );
 
     if (!result.success) {
       throw new Error(result.error || 'Upload failed');

@@ -32,7 +32,7 @@ const llmManager = LLMManager.getInstance(import.meta.env);
 export const PROVIDER_LIST = llmManager.getAllProviders();
 export const DEFAULT_PROVIDER = PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.GOOGLE_VERTEX_AI)!;
 
-const DEFAULT_MODEL_NAME = 'gemini-3-pro-preview';
+const DEFAULT_MODEL_NAME = 'gemini-3.1-pro-preview';
 
 export const FIXED_MODELS = {
   SELECT_STARTER_TEMPLATES: [
@@ -41,8 +41,12 @@ export const FIXED_MODELS = {
       model: 'gemini-2.5-flash',
     },
     {
+      provider: PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.OPEN_ROUTER)!,
+      model: 'openai/gpt-5-mini',
+    },
+    {
       provider: PROVIDER_LIST.find((p) => p.name === PROVIDER_NAMES.GOOGLE_VERTEX_AI)!,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
     },
   ],
   PROMPT_ENHANCER_TEMPLATE: {
@@ -194,3 +198,7 @@ export const ATTACHMENT_EXTS = [
 
 // Verse8 URLs
 export const VERSE8_BASE_URL = 'https://verse8.io';
+
+// Project size limits
+export const MAX_PROJECT_SIZE_MB = 100;
+export const MAX_PROJECT_SIZE_BYTES = MAX_PROJECT_SIZE_MB * 1024 * 1024;

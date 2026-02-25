@@ -6,22 +6,34 @@ import { fileTypeFromBuffer } from 'file-type';
 import { getEncoding } from 'istextorbinary';
 import { Buffer } from 'buffer';
 
-// Common patterns to ignore, similar to .gitignore
+export type SizeUnit = 'B' | 'KB' | 'MB' | 'GB' | 'TB';
+
+const UNIT_POW: Record<Exclude<SizeUnit, 'B'>, number> = {
+  KB: 1,
+  MB: 2,
+  GB: 3,
+  TB: 4,
+};
+
 export const IGNORE_PATTERNS = [
-  'node_modules/**',
-  '.git/**',
-  'dist/**',
-  'build/**',
-  '.next/**',
-  'coverage/**',
-  '.cache/**',
-  '.vscode/**',
-  '.idea/**',
+  '**/node_modules/**',
+  '**/.git/**',
+  '**/.next/**',
+  '**/coverage/**',
+  '**/.cache/**',
+  '**/.vscode/**',
+  '**/.idea/**',
+  '**/__MACOSX/**',
   '**/*.log',
   '**/.DS_Store',
+  '**/package-lock.json',
+  '**/yarn.lock',
+  '**/pnpm-lock.yaml',
   '**/npm-debug.log*',
   '**/yarn-debug.log*',
   '**/yarn-error.log*',
+  '**/dist/**',
+  '**/build/**',
 ];
 
 export const MAX_FILES = 1000;
@@ -414,130 +426,75 @@ ${files.map((file) => `<boltAction type="file" filePath="${file.path}"></boltAct
 // FileMap을 FileSystemTree로 변환하는 유틸리티 함수
 export function convertFileMapToFileSystemTree(fileMap: FileMap): FileSystemTree {
   const fileTree: FileSystemTree = {};
-  const dirSet = new Set<string>();
 
   if (!fileMap) {
     return {};
   }
 
-  // 모든 디렉토리 경로 수집
-  Object.keys(fileMap).forEach((path) => {
-    if (fileMap[path]!.type === 'folder') {
-      // WORK_DIR 제거하고 경로 추출
-      const relativePath = path.replace(`${WORK_DIR}/`, '');
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
 
-      if (relativePath) {
-        dirSet.add(relativePath);
+    if (!fileData || fileData.type !== 'file') {
+      continue;
+    }
+
+    // Remove WORK_DIR and extract path
+    const relativePath = path.replace(`${WORK_DIR}/`, '');
+    const pathParts = relativePath.split('/');
+    const fileName = pathParts.pop() || '';
+
+    // Create directory path (traverse and create if needed)
+    let currentTree = fileTree;
+
+    for (const part of pathParts) {
+      if (!currentTree[part]) {
+        currentTree[part] = {
+          directory: {},
+        } as DirectoryNode;
       }
+
+      const dirNode = currentTree[part] as DirectoryNode;
+      currentTree = dirNode.directory;
+    }
+
+    // Add file
+    /**
+     * FileMap → FileSystemTree conversion:
+     * - Binary files: fileData.buffer (Uint8Array) → contents (number[])
+     * - Text files: fileData.content (string) → contents (string)
+     *
+     * ⚠️ PROTOCOL COMPLIANCE - DO NOT CHANGE TO BASE64:
+     * FileNode.file.contents MUST be string | number[] as defined in remote-container-protocol.ts
+     * - Text files: string (actual text content)
+     * - Binary files: number[] (byte array)
+     *
+     * Why number[] instead of Base64 string:
+     * 1. Protocol contract: container-agent expects Array.isArray(contents) for binary detection
+     * 2. Container-agent logic: `Array.isArray(contents) ? Buffer.from(contents) : contents`
+     * 3. Base64 string would be written as-is to files, corrupting binary data
+     * 4. Both projects share the same protocol definition with explicit number[] type
+     *
+     * Reference: agent8-container-agent/src/server.ts:1259 and container-agent-impl.ts:127
+     */
+    if (fileData.isBinary && fileData.buffer) {
+      // Binary file: convert Uint8Array to number[] (protocol compliance)
+      currentTree[fileName] = {
+        file: {
+          contents: Array.from(fileData.buffer), // Uint8Array → number[] (MUST be array, not Base64)
+          isBinary: true,
+          mimeType: fileData.mimeType,
+        },
+      } as FileNode;
     } else {
-      // 파일의 모든 상위 디렉토리 추출
-      const relativePath = path.replace(`${WORK_DIR}/`, '');
-      const pathParts = relativePath.split('/');
-
-      if (pathParts.length > 1) {
-        for (let i = 1; i < pathParts.length; i++) {
-          const dirPath = pathParts.slice(0, i).join('/');
-
-          if (dirPath) {
-            dirSet.add(dirPath);
-          }
-        }
-      }
+      // Text file: use string directly
+      currentTree[fileName] = {
+        file: {
+          contents: fileData.content || '', // string → string
+          isBinary: false,
+        },
+      } as FileNode;
     }
-  });
-
-  // 디렉토리 구조 생성을 위한 헬퍼 함수
-  const ensureDirectoryExists = (tree: FileSystemTree, path: string[]): FileSystemTree => {
-    if (path.length === 0) {
-      return tree;
-    }
-
-    const [current, ...rest] = path;
-
-    if (!tree[current]) {
-      tree[current] = {
-        directory: {},
-      } as DirectoryNode;
-    }
-
-    if (rest.length === 0) {
-      return tree;
-    }
-
-    const dirNode = tree[current] as DirectoryNode;
-    ensureDirectoryExists(dirNode.directory, rest);
-
-    return tree;
-  };
-
-  // 모든 디렉토리 구조 생성
-  dirSet.forEach((dirPath) => {
-    const pathParts = dirPath.split('/');
-    ensureDirectoryExists(fileTree, pathParts);
-  });
-
-  // 파일 추가
-  Object.keys(fileMap).forEach((path) => {
-    if (fileMap[path]!.type === 'file') {
-      const relativePath = path.replace(`${WORK_DIR}/`, '');
-      const pathParts = relativePath.split('/');
-      const fileName = pathParts.pop() || '';
-
-      let currentTree = fileTree;
-
-      // 파일의 디렉토리 경로 탐색
-      for (let i = 0; i < pathParts.length; i++) {
-        const part = pathParts[i];
-
-        if (!currentTree[part]) {
-          currentTree[part] = { directory: {} } as DirectoryNode;
-        }
-
-        const dirNode = currentTree[part] as DirectoryNode;
-        currentTree = dirNode.directory;
-      }
-
-      // 파일 추가
-      const fileData = fileMap[path]!;
-
-      /**
-       * FileMap → FileSystemTree 변환:
-       * - 바이너리 파일: fileData.buffer (Uint8Array) → contents (number[])
-       * - 텍스트 파일: fileData.content (string) → contents (string)
-       *
-       * ⚠️ PROTOCOL COMPLIANCE - DO NOT CHANGE TO BASE64:
-       * FileNode.file.contents MUST be string | number[] as defined in remote-container-protocol.ts
-       * - Text files: string (actual text content)
-       * - Binary files: number[] (byte array)
-       *
-       * Why number[] instead of Base64 string:
-       * 1. Protocol contract: container-agent expects Array.isArray(contents) for binary detection
-       * 2. Container-agent logic: `Array.isArray(contents) ? Buffer.from(contents) : contents`
-       * 3. Base64 string would be written as-is to files, corrupting binary data
-       * 4. Both projects share the same protocol definition with explicit number[] type
-       *
-       * Reference: agent8-container-agent/src/server.ts:1259 and container-agent-impl.ts:127
-       */
-      if (fileData.isBinary && fileData.buffer) {
-        // 바이너리 파일: Uint8Array를 number[]로 변환 (프로토콜 준수)
-        currentTree[fileName] = {
-          file: {
-            contents: Array.from(fileData.buffer), // Uint8Array → number[] (MUST be array, not Base64)
-            isBinary: true,
-            mimeType: fileData.mimeType,
-          },
-        } as FileNode;
-      } else {
-        // 텍스트 파일: 문자열 그대로 사용
-        currentTree[fileName] = {
-          file: {
-            contents: fileData.content || '', // string → string
-            isBinary: false,
-          },
-        } as FileNode;
-      }
-    }
-  });
+  }
 
   return fileTree;
 }
@@ -788,6 +745,61 @@ export function getFileContents(fileMap: FileMap, path: string): string | null {
   }
 
   return file.content || '';
+}
+
+/**
+ * Get total size of FileMap in specified unit
+ * @param fileMap FileMap to calculate size for
+ * @param unit Unit to convert to (default: 'B')
+ * @param base Base to use for conversion (default: 1024)
+ * @returns Total size in specified unit
+ */
+export function getFileMapSize(fileMap: FileMap, unit: SizeUnit = 'B', base: 1000 | 1024 = 1024): number {
+  return bytesToUnit(getFileMapSizeBytes(fileMap), unit, base);
+}
+
+/**
+ * Convert bytes to specified unit
+ * @param bytes Bytes to convert
+ * @param unit Unit to convert to
+ * @param base Base to use for conversion (default: 1024)
+ * @returns Converted size in specified unit
+ */
+export function bytesToUnit(bytes: number, unit: SizeUnit, base: 1000 | 1024 = 1024): number {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return 0;
+  }
+
+  if (unit === 'B') {
+    return bytes;
+  }
+
+  return bytes / Math.pow(base, UNIT_POW[unit]);
+}
+
+/**
+ * Calculate total size of FileMap in MB
+ * @param fileMap FileMap to calculate size for
+ * @returns Total size in bytes
+ */
+function getFileMapSizeBytes(fileMap: FileMap): number {
+  let totalSizeBytes = 0;
+
+  for (const path in fileMap) {
+    const fileData = fileMap[path];
+
+    if (!fileData || fileData.type !== 'file') {
+      continue;
+    }
+
+    if (fileData.isBinary && fileData.buffer) {
+      totalSizeBytes += fileData.buffer.byteLength;
+    } else if (fileData.content) {
+      totalSizeBytes += new Blob([fileData.content]).size;
+    }
+  }
+
+  return totalSizeBytes;
 }
 
 /**

@@ -1,0 +1,11 @@
+# Cloudflare Pages local development environment variables
+# Copy this file to .dev.vars and fill in your values
+# This file is used by `wrangler pages dev` and `pnpm start`
+
+# Sentry DSN for error monitoring
+# Get this from: https://sentry.io/settings/planetarium-pv/projects/javascript-remix/keys/
+SENTRY_DSN=
+
+# Sentry organization and project slugs (used at runtime for Slack notification links)
+SENTRY_ORG=
+SENTRY_PROJECT=
