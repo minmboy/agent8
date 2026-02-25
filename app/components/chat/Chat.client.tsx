@@ -602,6 +602,9 @@ export const ChatImpl = memo(
     const [attachmentList, setAttachmentList] = useState<ChatAttachment[]>([]);
     const [searchParams, setSearchParams] = useSearchParams();
     const [fakeLoading, setFakeLoading] = useState<boolean>(false);
+    const [failedMessageIds, setFailedMessageIds] = useState<Set<string>>(new Set());
+    const failedMessageIdRef = useRef<string | null>(null);
+    const lastAiMessageIdRef = useRef<string | null>(null);
     const [installNpm, setInstallNpm] = useState<boolean>(false);
     const [customProgressAnnotations, setCustomProgressAnnotations] = useState<ProgressAnnotation[]>([]);
 
@@ -609,6 +612,7 @@ export const ChatImpl = memo(
     const actionAlert = useWorkbenchActionAlert();
     const isDeploying = useWorkbenchIsDeploying();
     const isDeployingRef = useRef(isDeploying);
+
     useEffect(() => {
       isDeployingRef.current = isDeploying;
     }, [isDeploying]);
@@ -722,6 +726,13 @@ export const ChatImpl = memo(
 
         // Handle server-side errors (data-error with reason and message)
         if (data.type === 'data-error' && isServerError(extractedData)) {
+          const id = lastAiMessageIdRef.current;
+
+          if (id) {
+            setFailedMessageIds((prev) => new Set(prev).add(id));
+            failedMessageIdRef.current = id;
+          }
+
           processError(extractedData.reason, chatRequestStartTimeRef.current ?? 0, {
             error: extractedData.reason,
             context: `useChat onData callback, model: ${model}, provider: ${provider.name}`,
@@ -752,6 +763,13 @@ export const ChatImpl = memo(
 
         if (isAbortError(e)) {
           return;
+        }
+
+        const id = lastAiMessageIdRef.current;
+
+        if (id) {
+          setFailedMessageIds((prev) => new Set(prev).add(id));
+          failedMessageIdRef.current = id;
         }
 
         const currentModel = chatStateRef.current.model;
@@ -841,6 +859,12 @@ export const ChatImpl = memo(
 
         workbench.onMessageClose(message.id, async () => {
           addDebugLog('onMessageClose');
+
+          if (failedMessageIdRef.current === message.id) {
+            addDebugLog('Skip:runAndPreview (stream error)');
+            return;
+          }
+
           addDebugLog('Start:runAndPreview');
           await runAndPreview(message);
           addDebugLog('Complete:runAndPreview');
@@ -998,6 +1022,15 @@ export const ChatImpl = memo(
         parseMessages,
       });
     }, [messages, isLoading, parseMessages]);
+
+    useEffect(() => {
+      const lastAiMsg = [...messages].reverse().find((m) => m.role === 'assistant');
+      lastAiMessageIdRef.current = lastAiMsg?.id ?? null;
+    }, [messages]);
+
+    useEffect(() => {
+      failedMessageIdRef.current = lastAiMessageIdRef.current;
+    }, [failedMessageIds]);
 
     useEffect(() => {
       setInstallNpm(false);
@@ -2268,6 +2301,7 @@ export const ChatImpl = memo(
           chatStarted={chatStarted}
           isStreaming={isStreaming}
           isAborted={isAborted}
+          failedMessageIds={failedMessageIds}
           onStreamingChange={(streaming) => {
             streamingState.set(streaming);
 

@@ -122,6 +122,7 @@ interface BaseChatProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
   isAborted?: boolean;
+  failedMessageIds?: Set<string>;
   onStreamingChange?: (streaming: boolean) => void;
   messages?: UIMessage[];
   description?: string;
@@ -169,6 +170,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       chatStarted = false,
       isStreaming = false,
       isAborted = false,
+      failedMessageIds,
       onStreamingChange,
       model,
       setModel,
@@ -937,6 +939,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       annotations={data}
                       isStreaming={isStreaming}
                       isAborted={isAborted}
+                      failedMessageIds={failedMessageIds}
                       progressAnnotations={progressAnnotations}
                       onRetry={handleRetry}
                       onFork={handleFork}
