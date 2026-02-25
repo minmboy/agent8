@@ -219,25 +219,27 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     }
   };
 
-  const containerStyle = {
-    ...(!isToolUseTool && {
+  let containerStyle: React.CSSProperties;
+
+  if (!isToolUseTool) {
+    containerStyle = {
       transition: 'transform 0.5s ease, opacity 0.5s ease',
       transform: isFadingOut ? 'translateY(-8px)' : 'translateY(0)',
       opacity: isFadingOut ? 0 : 1,
-    }),
-    ...(isToolUseTool &&
-      !mcpServerBackground && {
-        paddingLeft: '12px',
-        paddingRight: '12px',
-      }),
-    ...(isToolUseTool &&
-      mcpServerBackground && {
-        width: 'fit-content',
-        padding: '8px 12px',
-        borderRadius: '24px',
-        background: mcpServerBackground,
-      }),
-  };
+    };
+  } else if (mcpServerBackground) {
+    containerStyle = {
+      width: 'fit-content',
+      padding: '8px 12px',
+      borderRadius: '24px',
+      background: mcpServerBackground,
+    };
+  } else {
+    containerStyle = {
+      paddingLeft: '12px',
+      paddingRight: '12px',
+    };
+  }
 
   return (
     <div className="flex items-center gap-2 mt-4" style={containerStyle}>
