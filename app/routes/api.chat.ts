@@ -681,7 +681,6 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                     toolCallId: chunk.toolCallId,
                     result: chunk.errorText,
                     isError: true,
-                    error: chunk.errorText,
                   };
 
                   const divString = `\n<toolResult><div class="__toolResult__" id="${chunk.toolCallId}">\`${JSON.stringify(toolResult).replaceAll('`', '&grave;')}\`</div></toolResult>\n`;

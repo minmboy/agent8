@@ -3,7 +3,6 @@ import { toolUIStore } from '~/lib/stores/toolUI';
 
 export interface ToolResult {
   isError: boolean;
-  error?: string;
   result: any;
 }
 
@@ -22,7 +21,6 @@ export const ToolResult = ({ toolResult, id }: ToolResultProps) => {
           ...currentTool,
           loaded: true,
           isError: toolResult.isError,
-          error: toolResult.error,
         },
       },
     });
