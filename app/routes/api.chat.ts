@@ -107,6 +107,7 @@ function toBoltSubmitActionsXML(
 
 export const action = withTurnstile(withV8AuthUser(chatAction, { checkCredit: true }));
 
+const ERROR_FIELD = 'isError';
 const IGNORE_TOOL_TYPES = ['tool-input-start', 'tool-input-delta', 'tool-input-end'];
 const SUBMIT_ACTIONS_TOOLS = [
   TOOL_NAMES.SUBMIT_FILE_ACTION,
@@ -644,10 +645,11 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                     break;
                   }
 
+                  const isError = !!(chunk.output as any)?.[ERROR_FIELD];
                   const toolResult = {
                     toolCallId: chunk.toolCallId,
                     result: chunk.output,
-                    isError: false,
+                    isError,
                   };
 
                   const divString = `\n<toolResult><div class="__toolResult__" id="${chunk.toolCallId}">\`${JSON.stringify(toolResult).replaceAll('`', '&grave;')}\`</div></toolResult>\n`;
