@@ -3,7 +3,6 @@ import { toolUIStore } from '~/lib/stores/toolUI';
 
 export interface ToolResult {
   isError: boolean;
-  error?: string;
   result: any;
 }
 
@@ -12,16 +11,20 @@ interface ToolResultProps {
   id: string;
 }
 
-export const ToolResult = ({ id }: ToolResultProps) => {
+export const ToolResult = ({ toolResult, id }: ToolResultProps) => {
   useEffect(() => {
     const currentTool = toolUIStore.get().tools?.[id] || {};
     toolUIStore.set({
       tools: {
         ...toolUIStore.get().tools,
-        [id]: { ...currentTool, loaded: true },
+        [id]: {
+          ...currentTool,
+          loaded: true,
+          isError: toolResult.isError,
+        },
       },
     });
-  }, []);
+  }, [toolResult, id]);
 
   // Just mark as loaded, no UI needed
   return null;
