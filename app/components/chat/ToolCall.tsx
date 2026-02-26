@@ -236,8 +236,8 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     };
   } else {
     containerStyle = {
-      paddingLeft: '12px',
-      paddingRight: '12px',
+      paddingLeft: '4px',
+      paddingRight: '4px',
     };
   }
 
