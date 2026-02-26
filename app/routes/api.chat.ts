@@ -647,6 +647,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                   const toolResult = {
                     toolCallId: chunk.toolCallId,
                     result: chunk.output,
+                    isError: false,
                   };
 
                   const divString = `\n<toolResult><div class="__toolResult__" id="${chunk.toolCallId}">\`${JSON.stringify(toolResult).replaceAll('`', '&grave;')}\`</div></toolResult>\n`;
@@ -679,6 +680,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                   const toolResult = {
                     toolCallId: chunk.toolCallId,
                     result: chunk.errorText,
+                    isError: true,
+                    error: chunk.errorText,
                   };
 
                   const divString = `\n<toolResult><div class="__toolResult__" id="${chunk.toolCallId}">\`${JSON.stringify(toolResult).replaceAll('`', '&grave;')}\`</div></toolResult>\n`;

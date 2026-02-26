@@ -140,7 +140,11 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     toolCall.toolName.toLowerCase().includes(whitelistedTool.toLowerCase()),
   );
 
-  const toolLabel = isToolUseTool ? 'Tool Use' : 'Check';
+  let toolLabel = isToolUseTool ? 'Tool Use' : 'Check';
+
+  if (currentTool.isError) {
+    toolLabel = isToolUseTool ? 'Tool Use Failed' : 'Check Failed';
+  }
 
   const mcpServerName = getMcpServerName(toolCall.toolName);
   const mcpServerDisplayName = getMcpServerDisplayName(toolCall.toolName);
@@ -150,15 +154,30 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     <div className="flex items-center gap-2 mt-4">
       <div className="text-[20px]">
         {currentTool.loaded ? (
-          <div style={{ width: '20px', height: '20px' }}>
-            <Lottie animationData={checkCircleAnimationData} loop={false} />
-          </div>
+          currentTool.isError ? (
+            <div
+              style={{ width: '20px', height: '20px', padding: '2.5px' }}
+              className="flex items-center justify-center"
+            >
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="9" stroke="#EF4444" strokeWidth="2" fill="none" />
+                <path d="M10 6V11" stroke="#EF4444" strokeWidth="2" strokeLinecap="round" />
+                <circle cx="10" cy="14" r="0.75" fill="#EF4444" />
+              </svg>
+            </div>
+          ) : (
+            <div style={{ width: '20px', height: '20px' }}>
+              <Lottie animationData={checkCircleAnimationData} loop={false} />
+            </div>
+          )
         ) : (
           <div className="i-svg-spinners:90-ring-with-bg text-white"></div>
         )}
       </div>
       <div className="flex items-center gap-1 flex-[1_0_0]">
-        <span className="text-body-sm text-tertiary">{toolLabel}</span>
+        <span className={`text-body-sm ${currentTool.isError ? 'text-danger-bold' : 'text-tertiary'}`}>
+          {toolLabel}
+        </span>
         <div className="flex items-center gap-0.5">
           <img src={iconPath} alt={mcpServerDisplayName || mcpServerName || 'Tool'} className="w-4 h-4" />
           <span className="text-body-sm text-secondary">
