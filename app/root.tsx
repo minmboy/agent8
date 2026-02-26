@@ -97,7 +97,9 @@ export const Head = createHead(() => (
     <script dangerouslySetInnerHTML={{ __html: gtmCode }} />
     <script dangerouslySetInnerHTML={{ __html: hotjarCode }} />
     {/* Cloudflare Turnstile Script */}
-    <script async defer src="https://challenges.cloudflare.com/turnstile/v0/api.js" />
+    {import.meta.env.VITE_TURNSTILE_SITE_KEY && (
+      <script async defer src="https://challenges.cloudflare.com/turnstile/v0/api.js" />
+    )}
   </>
 ));
 
