@@ -247,7 +247,16 @@ ${userMessage}
 <V8AssistantMessage>
 ${truncateMessage(
   content
-    .replace(/(<toolResult><div[^>]*?>)(.*?)(<\/div><\/toolResult>)/gs, '$1`{"result":"(truncated)"}`$3')
+    .replace(/(<toolResult><div[^>]*?>)(.*?)(<\/div><\/toolResult>)/gs, (_match, prefix, jsonContent, suffix) => {
+      try {
+        const parsed = JSON.parse(jsonContent.replace(/^`|`$/g, ''));
+        const truncated = { result: '(truncated)', isError: !!parsed.isError };
+
+        return `${prefix}\`${JSON.stringify(truncated)}\`${suffix}`;
+      } catch {
+        return `${prefix}\`{"result":"(truncated)"}\`${suffix}`;
+      }
+    })
     .replace(/(<boltAction type="file"[^>]*>)([\s\S]*?)(<\/boltAction>)/gs, '$1(truncated)$3')
     .replace(/(<boltAction type="modify"[^>]*>)([\s\S]*?)(<\/boltAction>)/gs, '$1(truncated)$3'),
   MAX_ASSISTANT_MESSAGE_SIZE,
