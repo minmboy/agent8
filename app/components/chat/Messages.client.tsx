@@ -393,7 +393,7 @@ export const Messages = forwardRef<HTMLDivElement, MessagesProps>(
                               </>
                             ) : failedMessageIds?.has(messageId ?? '') ? (
                               <span className="text-heading-xs text-danger-bold">Response Failed</span>
-                            ) : isLast && !isAborted ? (
+                            ) : isLast && !isAborted && !isMessageAborted ? (
                               <span
                                 className="text-heading-xs"
                                 style={{

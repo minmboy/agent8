@@ -1791,6 +1791,7 @@ export const ChatImpl = memo(
           }
         }
 
+        chatStore.setKey('aborted', false);
         setFakeLoading(true);
         runAnimation();
         workbench.currentView.set('preview');
@@ -1876,8 +1877,6 @@ export const ChatImpl = memo(
         if (error != null) {
           setMessages(messages.slice(0, -1));
         }
-
-        chatStore.setKey('aborted', false);
 
         if (repoStore.get().path) {
           checkAborted();
