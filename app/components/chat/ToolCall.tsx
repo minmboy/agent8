@@ -1,8 +1,11 @@
 import { useStore } from '@nanostores/react';
 import Lottie from 'lottie-react';
+import { useState } from 'react';
 import { toolUIStore } from '~/lib/stores/toolUI';
+import { mcpServersStore } from '~/lib/stores/settings';
 import { EXCLUSIVE_3D_DOC_TOOLS, TOOL_NAMES } from '~/utils/constants';
 import { checkCircleAnimationData } from '~/utils/animationData';
+import { BranchIndicatorIcon } from '~/components/ui/Icons';
 
 export interface ToolCall {
   toolName: string;
@@ -40,6 +43,16 @@ const MCP_SERVER_ICONS: Record<string, string> = {
 // MCP server display name mapping (for servers with different display names)
 const MCP_SERVER_DISPLAY_NAMES: Record<string, string> = {
   Claythis: '2D-to-3D',
+};
+
+// MCP server background gradient mapping (Tool Use pill color per server)
+const MCP_SERVER_BACKGROUNDS: Record<string, string> = {
+  UI: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 132, 161, 0.10) 100%)',
+  Skybox: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(104, 177, 255, 0.10) 100%)',
+  Audio: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 175, 114, 0.10) 100%)',
+  Cinematic: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(180, 145, 255, 0.10) 100%)',
+  Image: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(194, 255, 186, 0.10) 100%)',
+  Claythis: 'linear-gradient(90deg, rgba(255, 255, 255, 0.10) 0%, rgba(81, 193, 203, 0.10) 100%)',
 };
 
 // Linked servers that should use parent server's icon and name
@@ -117,9 +130,22 @@ const getMcpServerDisplayName = (toolName: string): string | null => {
   return null;
 };
 
+const getMcpServerBackground = (toolName: string): string | null => {
+  const serverName = getMcpServerName(toolName);
+
+  if (serverName && MCP_SERVER_BACKGROUNDS[serverName]) {
+    return MCP_SERVER_BACKGROUNDS[serverName];
+  }
+
+  return null;
+};
+
 export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
   const toolUI = useStore(toolUIStore);
+  const mcpServers = useStore(mcpServersStore);
   const currentTool = toolUI.tools?.[id] || {};
+  const [isVisible, setIsVisible] = useState<boolean>(true);
+  const [isFadingOut, setIsFadingOut] = useState<boolean>(false);
 
   // Hide system tools, only show MCP tools
   const isSystemTool = SYSTEM_TOOLS.includes(toolCall.toolName);
@@ -135,10 +161,49 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     return null;
   }
 
-  // Determine label: "Tool Use" or "Check"
-  const isToolUseTool = TOOL_USE_WHITELIST.some((whitelistedTool) =>
-    toolCall.toolName.toLowerCase().includes(whitelistedTool.toLowerCase()),
-  );
+  const isStatusTool =
+    toolCall.toolName.endsWith('_status') ||
+    toolCall.toolName.endsWith('_wait') ||
+    toolCall.toolName.endsWith('_result');
+
+  const mcpServerName = getMcpServerName(toolCall.toolName);
+  const mcpServerDisplayName = getMcpServerDisplayName(toolCall.toolName);
+  const iconPath = getMcpServerIcon(toolCall.toolName);
+  const mcpServerBackground = getMcpServerBackground(toolCall.toolName);
+
+  /*
+   * For custom MCP servers (not in the known list), find by matching registered server names
+   * Server names with spaces are stored as-is in the store, but tool names use dashes (toolset.ts:239)
+   */
+  const customMcpServer =
+    mcpServerName === null
+      ? (mcpServers.find((server) => {
+          const normalizedName = server.name.replaceAll(' ', '-');
+          return toolCall.toolName.startsWith(normalizedName + '_') || toolCall.toolName === normalizedName;
+        }) ?? null)
+      : null;
+
+  /*
+   * Extract the actual tool name part for custom MCP servers (strip server name prefix)
+   * e.g., "git-mcp_clone" with server "git mcp" → "clone"
+   */
+  const customToolName = customMcpServer
+    ? toolCall.toolName.slice(customMcpServer.name.replaceAll(' ', '-').length + 1) || null
+    : null;
+
+  // True when the tool belongs to a known or custom MCP server (false = agent8 internal tool)
+  const isIdentifiedMcpTool = mcpServerName !== null || customMcpServer !== null;
+
+  /*
+   * Determine label: "Tool Use" or "Check"
+   * - Whitelist applies globally (covers known servers + story protocol etc.)
+   * - Custom servers (found in store): non-status tools show "Tool Use"
+   */
+  const isToolUseTool =
+    TOOL_USE_WHITELIST.some((whitelistedTool) =>
+      toolCall.toolName.toLowerCase().includes(whitelistedTool.toLowerCase()),
+    ) ||
+    (customMcpServer !== null && !isStatusTool);
 
   let toolLabel = isToolUseTool ? 'Tool Use' : 'Check';
 
@@ -146,12 +211,43 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
     toolLabel = isToolUseTool ? 'Tool Use Failed' : 'Check Failed';
   }
 
-  const mcpServerName = getMcpServerName(toolCall.toolName);
-  const mcpServerDisplayName = getMcpServerDisplayName(toolCall.toolName);
-  const iconPath = getMcpServerIcon(toolCall.toolName);
+  // Check tools are fully removed from DOM after disappear animation completes
+  if (!isToolUseTool && !isVisible) {
+    return null;
+  }
+
+  const handleLottieComplete = () => {
+    if (!isToolUseTool) {
+      setIsFadingOut(true);
+      setTimeout(() => setIsVisible(false), 500);
+    }
+  };
+
+  let containerStyle: React.CSSProperties;
+
+  if (!isToolUseTool) {
+    containerStyle = {
+      transition: 'transform 0.5s ease, opacity 0.5s ease',
+      transform: isFadingOut ? 'translateY(-8px)' : 'translateY(0)',
+      opacity: isFadingOut ? 0 : 1,
+    };
+  } else if (mcpServerBackground) {
+    containerStyle = {
+      width: 'fit-content',
+      padding: '8px 12px',
+      borderRadius: '24px',
+      background: mcpServerBackground,
+    };
+  } else {
+    containerStyle = {
+      paddingLeft: '4px',
+      paddingRight: '4px',
+    };
+  }
 
   return (
-    <div className="flex items-center gap-2 mt-4">
+    <div className="flex items-center gap-2 mt-4" style={containerStyle}>
+      {!isToolUseTool && <BranchIndicatorIcon />}
       <div className="text-[20px]">
         {currentTool.loaded ? (
           currentTool.isError ? (
@@ -167,7 +263,7 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
             </div>
           ) : (
             <div style={{ width: '20px', height: '20px' }}>
-              <Lottie animationData={checkCircleAnimationData} loop={false} />
+              <Lottie animationData={checkCircleAnimationData} loop={false} onComplete={handleLottieComplete} />
             </div>
           )
         ) : (
@@ -175,14 +271,21 @@ export const ToolCall = ({ toolCall, id }: ToolCallProps) => {
         )}
       </div>
       <div className="flex items-center gap-1 flex-[1_0_0]">
-        <span className={`text-body-sm ${currentTool.isError ? 'text-danger-bold' : 'text-tertiary'}`}>
+        <span className={`text-body-sm shrink-0 ${currentTool.isError ? 'text-danger-bold' : 'text-tertiary'}`}>
           {toolLabel}
         </span>
-        <div className="flex items-center gap-0.5">
-          <img src={iconPath} alt={mcpServerDisplayName || mcpServerName || 'Tool'} className="w-4 h-4" />
-          <span className="text-body-sm text-secondary">
-            {mcpServerDisplayName || mcpServerName || toolCall.toolName}
+        <div className="flex items-center gap-0.5 min-w-0 overflow-hidden">
+          {isIdentifiedMcpTool && (
+            <img
+              src={iconPath}
+              alt={mcpServerDisplayName || mcpServerName || customMcpServer?.name || 'Tool'}
+              className="w-4 h-4 shrink-0"
+            />
+          )}
+          <span className={`text-body-sm line-clamp-1 ${isIdentifiedMcpTool ? 'text-secondary' : 'text-subtle'}`}>
+            {mcpServerDisplayName || mcpServerName || customMcpServer?.name || toolCall.toolName}
           </span>
+          {customToolName && <span className="text-body-sm text-subtle ml-1.5 line-clamp-1">{customToolName}</span>}
         </div>
       </div>
     </div>

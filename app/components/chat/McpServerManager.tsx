@@ -7,6 +7,8 @@ import { useMobileView } from '~/lib/hooks/useMobileView';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import CustomButton from '~/components/ui/CustomButton';
 import { PlusIcon } from 'lucide-react';
+import { CloseIcon } from '~/components/ui/Icons/CloseIcon';
+import { IconButton } from '~/components/ui/IconButton';
 
 // MCP Server Manager Component
 const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = false }) => {
@@ -93,10 +95,20 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
   const [gridColumns, setGridColumns] = useState<number>(3);
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
+  // Determine if dropdown should be rendered with portal
+  const shouldUsePortal = isMobileView;
+
+  // Modal styling based on chat state
+  const isBottomSheet = isMobileView && chatStarted; // Bottom sheet for mobile + post-chat
+  const isFloatingModal = isMobileView && !chatStarted; // Floating modal for mobile + pre-chat
+
+  // Modal height for portal mode
+  const modalHeight = isBottomSheet ? '85svh' : '506px';
+
   // Calculate dropdown max height based on view mode and grid columns
   const dropdownMaxHeight = useMemo(() => {
     if (isMobileView) {
-      return chatStarted ? '182px' : '220px';
+      return chatStarted ? 'calc(85svh - 76px)' : '396px';
     }
 
     if (gridColumns === 3) {
@@ -313,6 +325,106 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
     return sortedAndFilteredServers.filter((item) => item.server.enabled);
   }, [sortedAndFilteredServers]);
 
+  // Dropdown grid content (server list)
+  const serverListContent = (
+    <>
+      {isBottomSheet && (
+        <div className="flex items-center gap-2 self-stretch mb-4">
+          <span className="text-heading-md text-primary flex-[1_0_0]">Select MCP Tools</span>
+          <IconButton onClick={() => setShowServerManager(false)}>
+            <CloseIcon width={20} height={20} />
+          </IconButton>
+        </div>
+      )}
+
+      {mcpServers.length > 0 ? (
+        <div className="w-full" ref={gridContainerRef}>
+          <div
+            className="overflow-y-auto -mx-2"
+            style={{
+              minHeight: shouldUsePortal ? '363px' : 'auto',
+              maxHeight: dropdownMaxHeight,
+            }}
+          >
+            <div
+              className="inline-grid self-stretch"
+              style={{
+                rowGap: '8px',
+                columnGap: '6px',
+                gridTemplateRows: 'repeat(1, fit-content(100%))',
+                gridTemplateColumns: isMobileView
+                  ? 'repeat(2, minmax(0, 1fr))'
+                  : `repeat(${gridColumns}, minmax(0, 1fr))`,
+              }}
+            >
+              {sortedAndFilteredServers.map(({ server, index }) => {
+                const isDefault = isDefaultServer(server.name);
+
+                return (
+                  <div
+                    key={index}
+                    className={classNames(
+                      'flex gap-2.5 rounded-lg cursor-pointer',
+                      isDefault ? 'flex-col items-start flex-1 px-3 py-[10px]' : 'items-stretch pr-3',
+                      server.enabled
+                        ? 'border border-solid border-interactive-selected bg-interactive-neutral'
+                        : 'border border-solid border-tertiary bg-interactive-neutral-subtle hover:bg-interactive-neutral-subtle-hovered active:bg-interactive-neutral-subtle-hovered',
+                    )}
+                    onClick={() => handleToggleServer(index, !server.enabled)}
+                  >
+                    {renderServerItem(server, index, isDefault)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="w-full text-center py-3.2 px-3.2 text-bolt-elements-textSecondary text-[11.2px]">
+          No MCP servers registered. Add a new server to get started.
+        </div>
+      )}
+    </>
+  );
+
+  // Buttons area
+  const buttonsContent = (
+    <div
+      className={classNames(
+        'flex items-center justify-between flex-wrap self-stretch',
+        showServerManager && !shouldUsePortal ? '-mx-2' : '',
+      )}
+    >
+      {shouldUsePortal ? (
+        <div className="flex items-start self-stretch gap-3 w-full">
+          <CustomButton className="w-full" variant="secondary-ghost" size="md" onClick={() => setShowAddForm(true)}>
+            Add Custom MCP
+          </CustomButton>
+
+          <CustomButton
+            className="w-full"
+            variant="primary-filled"
+            size="md"
+            onClick={() => setShowServerManager(false)}
+          >
+            Apply
+          </CustomButton>
+        </div>
+      ) : (
+        <>
+          <CustomButton variant="secondary-text" size="sm" onClick={() => setShowAddForm(true)}>
+            <PlusIcon size={20} />
+            Add Custom MCP Tool
+          </CustomButton>
+
+          <CustomButton variant="primary-text" size="sm" onClick={() => setShowServerManager(false)}>
+            Apply
+          </CustomButton>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div
       className={classNames('w-full mx-auto flex flex-col', {
@@ -320,81 +432,96 @@ const McpServerManager: React.FC<{ chatStarted?: boolean }> = ({ chatStarted = f
         'tablet:max-w-chat-before-start': !chatStarted,
       })}
     >
-      {/* Desktop & Mobile dropdown - positioned above */}
-      {showServerManager && (
-        <motion.div
-          ref={dropdownRef}
-          className="flex w-full flex-col items-start rounded-[8px] bg-transparent mb-2 relative z-dropdown-elevated"
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.2 }}
-        >
-          {mcpServers.length > 0 ? (
-            <div className="w-full" ref={gridContainerRef}>
-              <div
-                className="overflow-y-auto -mx-2"
+      {/* Render dropdown with portal for mobile pre-chat, otherwise inline */}
+      {shouldUsePortal && showServerManager
+        ? createPortal(
+            <div
+              className={classNames('absolute left-0 right-0 bg-black/50 font-primary flex items-end justify-center', {
+                'pb-[34px]': isFloatingModal,
+              })}
+              style={{
+                zIndex: 1200,
+                top: 0,
+                bottom: 0,
+                position: 'absolute',
+                height: '100svh',
+              }}
+              onClick={() => setShowServerManager(false)}
+            >
+              <motion.div
+                ref={dropdownRef}
+                className={classNames('flex flex-col bg-primary w-full elevation-light-3 overflow-hidden', {
+                  'rounded-[16px]': isFloatingModal,
+                  'rounded-t-[16px]': isBottomSheet,
+                })}
                 style={{
-                  maxHeight: dropdownMaxHeight,
+                  maxHeight: modalHeight,
+                  position: 'relative',
                 }}
+                initial={{ opacity: 0, y: '100%' }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: '100%' }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+                onClick={(e) => e.stopPropagation()}
               >
+                {/* Scrollable content area */}
                 <div
-                  className="inline-grid self-stretch"
+                  className={classNames('flex-1 pt-7', {
+                    'px-7': isFloatingModal,
+                    'px-5': isBottomSheet,
+                  })}
                   style={{
-                    rowGap: '8px',
-                    columnGap: '6px',
-                    gridTemplateRows: 'repeat(1, fit-content(100%))',
-                    gridTemplateColumns: isMobileView
-                      ? 'repeat(2, minmax(0, 1fr))'
-                      : `repeat(${gridColumns}, minmax(0, 1fr))`,
+                    minHeight: 0,
+                    overflow: 'hidden',
                   }}
                 >
-                  {sortedAndFilteredServers.map(({ server, index }) => {
-                    const isDefault = isDefaultServer(server.name);
-
-                    return (
-                      <div
-                        key={index}
-                        className={classNames(
-                          'flex gap-2.5 rounded-lg cursor-pointer',
-                          isDefault ? 'flex-col items-start flex-1 px-3 py-[10px]' : 'items-stretch pr-3',
-                          server.enabled
-                            ? 'border border-solid border-interactive-selected bg-interactive-neutral'
-                            : 'border border-solid border-tertiary bg-interactive-neutral-subtle hover:bg-interactive-neutral-subtle-hovered active:bg-interactive-neutral-subtle-hovered',
-                        )}
-                        onClick={() => handleToggleServer(index, !server.enabled)}
-                      >
-                        {renderServerItem(server, index, isDefault)}
-                      </div>
-                    );
-                  })}
+                  {serverListContent}
                 </div>
-              </div>
-            </div>
-          ) : (
-            <div className="w-full text-center py-3.2 px-3.2 text-bolt-elements-textSecondary text-[11.2px]">
-              No MCP servers registered. Add a new server to get started.
-            </div>
+
+                {/* Fixed bottom buttons */}
+                <div
+                  className={classNames('flex-shrink-0', {
+                    'px-5 pb-4': isFloatingModal,
+                    'px-4 py-4': isBottomSheet,
+                  })}
+                >
+                  {buttonsContent}
+                </div>
+              </motion.div>
+            </div>,
+            typeof document !== 'undefined' ? document.body : (null as any),
+          )
+        : showServerManager && (
+            <>
+              <motion.div
+                ref={dropdownRef}
+                className="flex w-full flex-col items-start rounded-[8px] bg-transparent mb-2 relative z-dropdown-elevated"
+                initial={{ opacity: 0, height: 0, y: -150 }}
+                animate={{ opacity: 1, height: 'auto', y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -150 }}
+                transition={{ duration: 0.2 }}
+              >
+                {serverListContent}
+              </motion.div>
+            </>
           )}
-        </motion.div>
-      )}
 
       {/* Tools Active button area - positioned below */}
       <div
         className={classNames(
           'flex items-center justify-between flex-wrap self-stretch',
-          showServerManager ? '-mx-2' : '',
+          showServerManager && !shouldUsePortal ? '-mx-2' : '',
         )}
       >
-        {showServerManager ? (
+        {showServerManager && !shouldUsePortal ? (
           <>
-            {/* When dropdown is open: Add Custom MCP Tool button */}
+            {/* When dropdown is open (inline mode): Add Custom MCP Tool button */}
             <CustomButton variant="secondary-text" size="sm" onClick={() => setShowAddForm(true)}>
               <PlusIcon size={20} />
               Add Custom MCP Tool
             </CustomButton>
 
-            {/* When dropdown is open: Apply button */}
+            {/* When dropdown is open (inline mode): Apply button */}
             <CustomButton variant="primary-text" size="sm" onClick={() => setShowServerManager(false)}>
               Apply
             </CustomButton>

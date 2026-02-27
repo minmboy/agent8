@@ -556,7 +556,7 @@ export const Preview = memo(({ isStreaming = false, workbenchState }: PreviewPro
               />
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
               {previews.length > 1 && (
                 <PortDropdown
                   activePreviewIndex={activePreviewIndex}
@@ -568,7 +568,7 @@ export const Preview = memo(({ isStreaming = false, workbenchState }: PreviewPro
                 />
               )}
 
-              <div className="flex items-center relative">
+              <div className="flex items-center gap-2">
                 <IconButton
                   icon="i-ph:devices"
                   onClick={toggleDeviceMode}
@@ -618,25 +618,27 @@ export const Preview = memo(({ isStreaming = false, workbenchState }: PreviewPro
                     )}
                   </>
                 )}
+
+                <IconButton
+                  icon="i-ph:arrow-square-out"
+                  onClick={() => openInNewWindow(isDeviceModeOn ? selectedDeviceSize : WINDOW_SIZES[0])}
+                  title="Open Preview in New Window"
+                />
               </div>
 
-              <IconButton
-                icon="i-ph:arrow-square-out"
-                onClick={() => openInNewWindow(isDeviceModeOn ? selectedDeviceSize : WINDOW_SIZES[0])}
-                title="Open Preview in New Window"
-              />
-
-              <CustomButton
-                className="ml-2"
-                variant="secondary-outlined"
-                size="md"
-                onClick={onRun}
-                disabled={connectionState !== 'connected'}
-                data-track="editor-workbench-runpreview"
-              >
-                <PlayIcon color="currentColor" size={20} />
-                Run Preview
-              </CustomButton>
+              <div className="flex items-center gap-2">
+                <PreviewQrCode value={url} />
+                <CustomButton
+                  variant="secondary-outlined"
+                  size="md"
+                  onClick={onRun}
+                  disabled={connectionState !== 'connected'}
+                  data-track="editor-workbench-runpreview"
+                >
+                  <PlayIcon color="currentColor" size={20} />
+                  Run Preview
+                </CustomButton>
+              </div>
             </div>
           </>
         )}
@@ -645,9 +647,6 @@ export const Preview = memo(({ isStreaming = false, workbenchState }: PreviewPro
       <div
         className={`relative flex-1 flex justify-center items-center overflow-hidden preview-container ${!(isSmallViewport && mobilePreviewMode) ? 'rounded-2xl' : ''}`}
       >
-        <div className="hidden xl:block absolute top-3 right-3 z-1">
-          <PreviewQrCode value={url} />
-        </div>
         <div
           style={{
             width: isDeviceModeOn ? `${selectedDeviceSize.width}px` : '100%',

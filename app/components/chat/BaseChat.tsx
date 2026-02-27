@@ -123,6 +123,7 @@ interface BaseChatProps {
   chatStarted?: boolean;
   isStreaming?: boolean;
   isAborted?: boolean;
+  failedMessageIds?: Set<string>;
   onStreamingChange?: (streaming: boolean) => void;
   messages?: UIMessage[];
   description?: string;
@@ -170,6 +171,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
       chatStarted = false,
       isStreaming = false,
       isAborted = false,
+      failedMessageIds,
       onStreamingChange,
       model,
       setModel,
@@ -953,8 +955,8 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
             <div
               className={classNames(`pt-4 relative flex-shrink-0`, {
                 'h-full flex flex-col': chatStarted,
-                'pb-[212px] md:pb-[104px]': !chatStarted,
-                'pb-[330px] md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
+                'md:pb-[100px]': !chatStarted,
+                'md:pb-[230px]': !chatStarted && !isStreaming && !!actionAlert && !!actionAlert.content,
               })}
             >
               <ClientOnly>
@@ -970,6 +972,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                       annotations={data}
                       isStreaming={isStreaming}
                       isAborted={isAborted}
+                      failedMessageIds={failedMessageIds}
                       progressAnnotations={progressAnnotations}
                       onRetry={handleRetry}
                       onFork={handleFork}
@@ -1005,7 +1008,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                     'sticky bottom-0': chatStarted && isSmallViewport,
                     'pl-6': !isSmallViewport,
                     'tablet:max-w-chat': chatStarted,
-                    'absolute left-1/2 translate-x-[-50%] bottom-0 md:bottom-3 max-w-[632px] !pl-0 z-[100]':
+                    'max-w-[632px] !pl-0 md:max-w-[632px] md:left-1/2 md:translate-x-[-50%] md:absolute md:bottom-8 z-[100]':
                       !chatStarted,
                     'z-prompt': chatStarted && (!isSmallViewport || mobilePreviewMode),
                     'z-chat-input-elevated': chatStarted && isSmallViewport && !mobilePreviewMode,
