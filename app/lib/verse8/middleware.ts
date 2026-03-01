@@ -6,6 +6,7 @@ import { createScopedLogger } from '~/utils/logger';
 import { getErrorStatus } from '~/utils/errors';
 
 const logger = createScopedLogger('middleware.withV8AuthUser');
+const BEARER_PREFIX = 'Bearer ';
 
 interface V8AuthUserOptions {
   checkActivated?: boolean;
@@ -48,8 +49,14 @@ export function withV8AuthUser(handler: any, options: V8AuthUserOptions = {}) {
         return await handler({ ...args, context: enhancedContext });
       }
 
+      const authHeader = request.headers.get('Authorization');
+      const bearerToken = authHeader?.startsWith(BEARER_PREFIX) ? authHeader.slice(BEARER_PREFIX.length) : null;
+
+      // Legacy: fallback to cookie-based token for backward compatibility
       const cookieHeader = request.headers.get('Cookie');
-      const { accessToken } = getUserAuthFromCookie(cookieHeader);
+      const { accessToken: cookieToken } = getUserAuthFromCookie(cookieHeader);
+
+      const accessToken = bearerToken ?? cookieToken;
 
       if (!accessToken) {
         return new Response('Unauthorized (no access token)', { status: 401 });
