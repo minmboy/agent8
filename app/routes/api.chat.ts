@@ -450,7 +450,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 const repeatCount = textDeltaHistory.filter((h) => h === delta).length;
 
                 if (repeatCount > MAX_TEXT_DELTA_REPEATS) {
-                  throw new LLMRepeatResponseError();
+                  logger.info('LLM repeat response detected');
                 }
               }
             } else if (messageType === 'tool-input-available' && 'toolName' in value && 'input' in value) {
@@ -467,7 +467,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 consecutiveRepeatCount++;
 
                 if (consecutiveRepeatCount >= MAX_CONSECUTIVE_REPEATS) {
-                  throw new LLMRepeatResponseError();
+                  logger.info('LLM repeat response detected');
                 }
               } else {
                 consecutiveRepeatCount = 0;
