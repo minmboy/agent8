@@ -568,7 +568,7 @@ export const Preview = memo(({ isStreaming = false, workbenchState }: PreviewPro
                 />
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 relative">
                 <IconButton
                   icon="i-ph:devices"
                   onClick={toggleDeviceMode}
