@@ -71,6 +71,7 @@ export interface CommitAction {
 export interface FileContent {
   path: string;
   content: string;
+  encoding?: string;
 }
 
 export interface ProjectAccessTokenResponse {
