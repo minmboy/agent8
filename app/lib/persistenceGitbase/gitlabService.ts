@@ -296,6 +296,7 @@ export class GitlabService {
           action: fileExists ? ('update' as const) : ('create' as const),
           filePath: file.path,
           content: file.content,
+          ...(file.encoding ? { encoding: file.encoding } : {}),
         };
         actions.push(action);
       }
