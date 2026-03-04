@@ -13,6 +13,7 @@ interface CloudflareEnv {
   CF_PAGES_BRANCH?: string;
   CF_PAGES_COMMIT_SHA?: string;
   CF_PAGES_URL?: string;
+  CORS_ALLOWED_ORIGINS?: string;
   [key: string]: unknown;
 }
 
@@ -43,6 +44,36 @@ const sentryMiddleware = Sentry.sentryPagesPlugin<CloudflareEnv>((context) => ({
   },
 }));
 
+// CORS configuration for cross-origin API access
+function getAllowedOrigins(env: CloudflareEnv): string[] {
+  const originsEnv = env.CORS_ALLOWED_ORIGINS;
+
+  if (originsEnv) {
+    return originsEnv.split(',').map((o) => o.trim());
+  }
+
+  return [];
+}
+
+function getCorsOrigin(request: Request, env: CloudflareEnv): string | null {
+  const origin = request.headers.get('Origin');
+
+  if (origin && getAllowedOrigins(env).includes(origin)) {
+    return origin;
+  }
+
+  return null;
+}
+
+function setCorsHeaders(response: Response, origin: string): Response {
+  const newResponse = new Response(response.body, response);
+  newResponse.headers.set('Access-Control-Allow-Origin', origin);
+  newResponse.headers.set('Access-Control-Allow-Credentials', 'true');
+  newResponse.headers.set('Vary', 'Origin');
+
+  return newResponse;
+}
+
 // Main request handler with access logging
 const handler: PagesFunction<CloudflareEnv> = async (context) => {
   const { request } = context;
@@ -50,8 +81,29 @@ const handler: PagesFunction<CloudflareEnv> = async (context) => {
   const method = request.method;
   const path = url.pathname;
 
-  // 🚀 FAST TRACK: Only log API requests, skip everything else
-  if (!path.startsWith('/api/') || method === 'OPTIONS') {
+  // Handle CORS preflight for API routes
+  if (path.startsWith('/api/') && method === 'OPTIONS') {
+    const corsOrigin = getCorsOrigin(request, context.env);
+
+    if (corsOrigin) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': corsOrigin,
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Max-Age': '86400',
+          Vary: 'Origin',
+        },
+      });
+    }
+
+    return new Response(null, { status: 204 });
+  }
+
+  // Non-API requests pass through directly
+  if (!path.startsWith('/api/')) {
     return await baseHandler(context);
   }
 
@@ -128,6 +180,13 @@ const handler: PagesFunction<CloudflareEnv> = async (context) => {
   ).catch((error) => {
     console.error('Access logging failed:', error instanceof Error ? error.message : 'Unknown error');
   });
+
+  // Add CORS headers to API responses
+  const corsOrigin = getCorsOrigin(request, context.env);
+
+  if (corsOrigin) {
+    return setCorsHeaders(response, corsOrigin);
+  }
 
   return response;
 };
